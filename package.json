@@ -1,6 +1,6 @@
 {
 	"name": "full-client-server-sveltekit",
-	"version": "0.0.1e",
+	"version": "0.0.1f",
 	"scripts": {
 		"dev": "vite dev --open",
 		"build": "vite build && npm run package",
@@ -69,5 +69,9 @@
 		"server",
 		"browser",
 		"blitz"
-	]
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/carlosv2/full-client-server-sveltekit.git"
+	}
 }
