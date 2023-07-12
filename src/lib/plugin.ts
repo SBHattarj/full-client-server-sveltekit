@@ -2,7 +2,7 @@ import WebSockets from "@carlosv2/adapter-node-ws/plugin";
 import ts, { type ConciseBody, type Identifier } from "typescript";
 import path from "path"
 import fs from "fs-extra"
-import { isFunctionNode, isIdenntifierCallExpression, isModuleDefaultImport, isNodeDeclaration } from "./utils";
+import { isFunctionNode, isIdenntifierCallExpression, isModuleDefaultImport, isNodeDeclaration } from "./utils.js";
 
 const globalsConst = new Set(["console"])
 
