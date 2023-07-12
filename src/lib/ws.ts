@@ -5,19 +5,21 @@ export default (function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSo
     return function handleWse(wss) {
         wss.on("connection", ws => {
             const wsEvents = WSEvents(ws);
-            wsEvents.on("/home/mav/test-module/full-client-serrver-sveltekit/src/routes/+page.svelte-88", async function (str) {
+            wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-0", async function (str) {
                 let [id, update] = deserialize(str, "front", wsEvents);
                 let caller = () => {
                     console.log("hello");
                 };
                 const result = await caller();
                 update();
-                wsEvents.emit(`/home/mav/test-module/full-client-serrver-sveltekit/src/routes/+page.svelte-88-${id}`, serialize(result, "back", wsEvents));
+                wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-0-${id}`, serialize(result, "back", wsEvents));
             });
-            wsEvents.on("/home/mav/test-module/full-client-serrver-sveltekit/src/routes/+page.svelte-89", async function (str) {
-                let [id, hello, $$invalidate, fn, bigInt, update] = deserialize(str, "front", wsEvents);
+            wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-1", async function (str) {
+                let [id, hello, constant, $$invalidate, fn, bigInt, update] = deserialize(str, "front", wsEvents);
                 let caller = async () => {
+                    (await import("/home/mav/full-client-server-sveltekit/src/routes/toBeImport")).say();
                     console.log(hello);
+                    console.log(constant);
                     $$invalidate(0, hello = "hello client");
                     console.log(await fn());
                     console.log("hello after fn");
@@ -27,10 +29,10 @@ export default (function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSo
                     return "to client";
                 };
                 const result = await caller();
-                update(hello, $$invalidate, fn, bigInt);
-                wsEvents.emit(`/home/mav/test-module/full-client-serrver-sveltekit/src/routes/+page.svelte-89-${id}`, serialize(result, "back", wsEvents));
+                update(hello, constant, $$invalidate, fn, bigInt);
+                wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-1-${id}`, serialize(result, "back", wsEvents));
             });
-            wsEvents.on("/home/mav/test-module/full-client-serrver-sveltekit/src/routes/+page.svelte-93", async function (str) {
+            wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-2", async function (str) {
                 let [id, $$invalidate, counter, update] = deserialize(str, "front", wsEvents);
                 let caller = () => {
                     $$invalidate(1, counter = counter + 1);
@@ -40,7 +42,7 @@ export default (function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSo
                 };
                 const result = await caller();
                 update($$invalidate, counter);
-                wsEvents.emit(`/home/mav/test-module/full-client-serrver-sveltekit/src/routes/+page.svelte-93-${id}`, serialize(result, "back", wsEvents));
+                wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-2-${id}`, serialize(result, "back", wsEvents));
             });
             cb(wsEvents);
         });

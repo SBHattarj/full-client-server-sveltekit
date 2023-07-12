@@ -1,7 +1,8 @@
 import WebSockets from "@carlosv2/adapter-node-ws/plugin";
-import ts, { type Identifier } from "typescript";
+import ts, { type ConciseBody, type Identifier } from "typescript";
 import path from "path"
 import fs from "fs-extra"
+import { isFunctionNode, isIdenntifierCallExpression, isModuleDefaultImport, isNodeDeclaration } from "./utils";
 
 const globalsConst = new Set(["console"])
 
@@ -56,6 +57,25 @@ const serializeDeserializeImportStatement = ts.factory.createImportDeclaration(
     ),
     ts.factory.createStringLiteral("full-client-server-sveltekit")
 )
+
+function createUpdateBlock(s: string) {
+    const varIdentifier = ts.factory.createIdentifier(s)
+    const updateIdentifier = ts.factory.createIdentifier(`${s}Updated`)
+    const updateAssignment = ts.factory.createAssignment(
+        varIdentifier,
+        updateIdentifier
+    )
+    const ifBlock = ts.factory.createIfStatement(
+        ts.factory.createStrictInequality(
+            varIdentifier,
+            updateIdentifier
+        ),
+        ts.factory.createBlock([
+            ts.factory.createExpressionStatement(updateAssignment)
+        ])
+    )
+    return ifBlock
+}
 
 function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, function: ts.ArrowFunction}>, file = ts.createSourceFile("ws.ts", "", ts.ScriptTarget.Latest)) {
     const printer = ts.createPrinter()
@@ -330,6 +350,32 @@ function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, fun
     return `${wsImportString}\n${wsEventImportString}\n${libImportString}\n${exportString}`
 }
 
+function fixRelativeImport(ast: ts.Node, file: string) {
+    if(ts.isCallExpression(ast)) {
+        if(ast.expression.getText() === "import") {
+            console.log(ast.arguments[0].getText())
+            if(ts.isStringLiteral(ast.arguments[0]) && (ast.arguments[0].text.startsWith("./") || ast.arguments[0].text.startsWith("../"))) {
+                const newImportPath = path.resolve(file.replace(/\/[^\/]+$/, ""), ast.arguments[0].getText().replaceAll('"', "").replaceAll("'", ""))
+                console.log(newImportPath)
+                console.log(newImportPath)
+                const newImportPathNode = ts.factory.createStringLiteral(newImportPath)
+                const newImportCall = ts.factory.createCallExpression(
+                    ast.expression,
+                    undefined,
+                    [
+                        newImportPathNode
+                    ]
+                )
+                ;(newImportCall as any).parent = ast.parent
+                ;(newImportCall as any).pos = ast.pos
+                ;(newImportCall as any).end = ast.end
+                Object.defineProperties(ast, Object.getOwnPropertyDescriptors(newImportCall))
+            }
+        }
+    }
+    for(let child of ast.getChildren()) fixRelativeImport(child, file)
+}
+
 export function serverBrowserSync() {
     const callNodeCalls: Map<string, {locals: Set<string>, function: ts.ArrowFunction}> = new Map();
     return {
@@ -344,7 +390,6 @@ export function serverBrowserSync() {
                 ts.ScriptTarget.Latest,
                 true
             )
-            const AST = ast
             let nodeCallIdentifier: string | undefined
             const printer = ts.createPrinter()
             let nextId = 0
@@ -366,99 +411,78 @@ export function serverBrowserSync() {
             }) {
                 const locals: Set<string> = new Set()
                 const nonLocals: Set<string> = new Set()
-                if(ts.isImportDeclaration(ast)) {
-                    if(ast.moduleSpecifier?.getText() === '"full-client-server-sveltekit"' && ast.importClause?.name != null) {
-                        nodeCallIdentifier = ast.importClause?.name?.getText()
-                        const libImportClause = ts.factory.updateImportClause(
-                            ast.importClause!,
-                            ast.importClause!.isTypeOnly,
-                            undefined,
-                            ts.factory.createNamedImports([
-                                ts.factory.createImportSpecifier(
-                                    false,
-                                    undefined,
-                                    ts.factory.createIdentifier("callNode")
-                                )
-                            ])
-                        )
-                        ;(ast as any).importClause = libImportClause
-                        const libModuleSpecifier = ts.factory.createStringLiteral("full-client-server-sveltekit")
-                        ;(ast as any).moduleSpecifier = libModuleSpecifier
-                        ;(ast.moduleSpecifier as any).parent = ast
-                        isChanged = true
-                        return {locals, nonLocals}
-                    }
+                if(isModuleDefaultImport(ast)) {
+                    nodeCallIdentifier = ast.importClause?.name?.getText()
+                    const libImportClause = ts.factory.updateImportClause(
+                        ast.importClause!,
+                        ast.importClause!.isTypeOnly,
+                        undefined,
+                        ts.factory.createNamedImports([
+                            ts.factory.createImportSpecifier(
+                                false,
+                                undefined,
+                                ts.factory.createIdentifier("callNode")
+                            )
+                        ])
+                    )
+                    ;(ast as any).importClause = libImportClause
+                    const libModuleSpecifier = ts.factory.createStringLiteral("full-client-server-sveltekit")
+                    ;(ast as any).moduleSpecifier = libModuleSpecifier
+                    ;(ast.moduleSpecifier as any).parent = ast
+                    isChanged = true
+                    return {locals, nonLocals}
                 }
-                if(ts.isCallExpression(ast)) {
-                    if(ts.isIdentifier(ast.expression)) {
-                        const id = `${nextId++}`
-                        if(ast.expression.getText() === nodeCallIdentifier) {
-                            if(ts.isFunctionDeclaration(ast.arguments[0]) || ts.isArrowFunction(ast.arguments[0])) {
-                                const {nonLocals: nonLocalsInner} = codeTransformAST({
-                                    ast: ast.arguments[0],
-                                    file,
-                                    saveNonLocals: true
-                                })
-                                let shared = new Set(Array.from(nonLocalsInner).filter(x => prevLocals.has(x) && !globalsConst.has(x)))
-                                callNodeCalls.set(
-                                    `${file}-${id}`, 
-                                    {
-                                        function: ast.arguments[0] as ts.ArrowFunction,
-                                        locals: shared
-                                    }
-                                )
-                                const libCall = ts.factory.createIdentifier("callNode")
-                                const callNodeCall = ts.factory.createCallExpression(
-                                    libCall,
-                                    undefined,
-                                    [
-                                        ts.factory.createStringLiteral(`${file}-${id}`),
-                                        ts.factory.createArrayLiteralExpression([
-                                            ...(shared ?? [] as string[])
-                                        ].map(s => ts.factory.createIdentifier(s))),
-                                        ts.factory.createArrowFunction(
-                                            undefined,
-                                            undefined,
-                                                [...(shared ?? [])].map(s => ts.factory.createParameterDeclaration(
-                                                    undefined,
-                                                    undefined,
-                                                    `${s}Updated`
-                                                )),
-                                            undefined,
-                                            undefined,
-                                            ts.factory.createBlock([...(shared ?? [])].map(s => ts.factory.createExpressionStatement(
-                                                ts.factory.createAssignment(
-                                                    ts.factory.createIdentifier(s),
-                                                    ts.factory.createIdentifier(`${s}Updated`)
-                                                )
-                                            )), true)
-                                        )
-                                    ]
-                                )
-                                ;(callNodeCall as any).parent = ast.parent
-                                ;(callNodeCall as any).pos = ast.pos
-                                ;(callNodeCall as any).end = ast.end
-                                Object.defineProperties(ast, Object.getOwnPropertyDescriptors(callNodeCall))
-                                isChanged = true
-                                return {locals, nonLocals}
-                            }
+                if(isIdenntifierCallExpression(ast, nodeCallIdentifier) && isFunctionNode(ast.arguments[0])) {
+                    const id = `${nextId++}`
+                    const {nonLocals: nonLocalsInner} = codeTransformAST({
+                        ast: ast.arguments[0],
+                        file,
+                        saveNonLocals: true
+                    })
+                    let shared = new Set(Array.from(nonLocalsInner).filter(x => prevLocals.has(x) && !globalsConst.has(x)))
+                    fixRelativeImport(ast.arguments[0].body, file)
+                    callNodeCalls.set(
+                        `${file}-${id}`, 
+                        {
+                            function: ast.arguments[0] as ts.ArrowFunction,
+                            locals: shared
                         }
-                    }
+                    )
+                    const libCall = ts.factory.createIdentifier("callNode")
+                    const callNodeCall = ts.factory.createCallExpression(
+                        libCall,
+                        undefined,
+                        [
+                            ts.factory.createStringLiteral(`${file}-${id}`),
+                            ts.factory.createArrayLiteralExpression([
+                                ...(shared ?? [] as string[])
+                            ].map(s => ts.factory.createIdentifier(s))),
+                            ts.factory.createArrowFunction(
+                                undefined,
+                                undefined,
+                                    [...(shared ?? [])].map(s => ts.factory.createParameterDeclaration(
+                                        undefined,
+                                        undefined,
+                                        `${s}Updated`
+                                    )),
+                                undefined,
+                                undefined,
+                                ts.factory.createBlock([...(shared ?? [])].map(createUpdateBlock), true)
+                            )
+                        ]
+                    )
+                    ;(callNodeCall as any).parent = ast.parent
+                    ;(callNodeCall as any).pos = ast.pos
+                    ;(callNodeCall as any).end = ast.end
+                    Object.defineProperties(ast, Object.getOwnPropertyDescriptors(callNodeCall))
+                    isChanged = true
+                    return {locals, nonLocals}
                 }
                 for(let node of ast.getChildren()) {
                     const transformASTResult = codeTransformAST({
             
                         ast: node, 
-                        isDeclaration: (ts.isImportDeclaration(ast) 
-                        || ts.isVariableDeclaration(ast)
-                        || ts.isClassDeclaration(ast)
-                        || ts.isInterfaceDeclaration(ast)
-                        || (ts.isImportClause(ast) && !ast.isTypeOnly)
-                        || ts.isFunctionDeclaration(ast)
-                        || (ts.isImportSpecifier(ast) && !ast.isTypeOnly)
-                        || (ts.isParameter(ast))
-                        || (isDeclaration && (isBindingName || ts.isBindingName(ast))))
-                        && !ts.isBlock(node),
+                        isDeclaration: isNodeDeclaration(ast, isDeclaration, isBindingName),
                         isBindingName: ts.isBindingName(ast) || isBindingName,
                         file,
                         prevLocals: new Set([...prevLocals, ...locals]),
@@ -492,7 +516,6 @@ export function serverBrowserSync() {
                 await fs.writeFile(path.resolve(process.cwd(), "src", "lib", "ws.ts"), serverImport)
                 return printer.printNode(ts.EmitHint.Unspecified, ast, ast)
             }
-            // return code
         }
     }
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
     import node from "full-client-server-sveltekit"
+    import { browser } from "$app/environment";
     node(() => {
         console.log("hello")
     })
@@ -9,9 +10,12 @@
     }
     let hello = "hello server"
     let bigInt = 100n
+    const constant = "constant"
     $: setTimeout(() => console.log("update", bigInt), 10)
     let a = node(async () => {
+        (await import("./toBeImport")).say()
         console.log(hello)
+        console.log(constant)
         hello = "hello client"
         console.log(await fn())
         console.log("hello after fn")
