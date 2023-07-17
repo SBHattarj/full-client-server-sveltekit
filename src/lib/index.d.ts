@@ -42,5 +42,5 @@ export declare function serialize(obj: any, from: "front" | "back" | undefined, 
 export declare function deserialize(str: string, from: "front" | "back" | undefined, wse: WSEventHandler): any;
 declare let wse: Promise<WSEventHandler> | null;
 export declare function callNode(id: string, share: any[], update?: (...args: any[]) => any): Promise<unknown> | undefined;
-export default function node<T>(nodeFunction: () => T): Promise<T>;
+export default function node<T>(nodeFunction: () => T): T extends Promise<Awaited<T>> ? T : Promise<T>;
 export { wse };
