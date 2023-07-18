@@ -116,7 +116,7 @@ export function objectMap(object: any, mapFN: ((value: any, path: (string | numb
     // the path is the array of properties that lead to current property
     let path = [keysMap[currentLevel][currentIndex]]
     // the objects through which we get to current property
-    let prevObjects = [object] as any[]
+    let prevObjects = [Object.defineProperties({}, getAllPropertyDescriptor(object))] as any[]
 
     // indices of the keys in path
     let prevKeyIndices = [currentIndex]
