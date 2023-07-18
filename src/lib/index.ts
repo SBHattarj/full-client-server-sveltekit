@@ -73,6 +73,8 @@ export function getAllPropertyDescriptor(obj: object) {
     let current = obj
     let descriptor = {} as {[key: string | number | symbol]: PropertyDescriptor}
 
+    if(current == null) return descriptor
+
     // If the object is an instance of Object, return its property descriptors
     if(current.constructor === Object) {
         return Object.getOwnPropertyDescriptors(current)
@@ -307,8 +309,8 @@ export function serialize(obj: any, from: "front" | "back" = "front", wse: WSEve
 
             }
         }
-        if(Array.isArray(value)) return [key, [...value]]
-        return [key, value]
+        const resultValue = Object.defineProperties({}, getAllPropertyDescriptor(value))
+        return [key, resultValue]
     })
     if(typeof value === "bigint") {
         meta.push([[], {type: "bigint", from}])
