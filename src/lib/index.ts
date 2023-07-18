@@ -308,9 +308,12 @@ export function serialize(obj: any, from: "front" | "back" = "front", wse: WSEve
                 return [key, classSerialize(value)]
 
             }
+            const resultValue = Object.keys(getAllPropertyDescriptor(value)).reduce((acc, key) => {
+                return { ...acc, [key]: value[key] }
+            }, {})
+            return [key, resultValue]
         }
-        const resultValue = Object.defineProperties({}, getAllPropertyDescriptor(value))
-        return [key, resultValue]
+        return [key, value]
     })
     if(typeof value === "bigint") {
         meta.push([[], {type: "bigint", from}])
