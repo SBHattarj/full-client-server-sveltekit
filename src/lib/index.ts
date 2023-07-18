@@ -171,7 +171,7 @@ export function objectMap(object: any, mapFN: ((value: any, path: (string | numb
                 && mapFNResultNormal[2] !== END_DEPTH
             ) {
                 //We add the objects to prev objects to refer back to
-                prevObjects.push(mapFNResult)
+                prevObjects.push(Object.defineProperties({}, getAllPropertyDescriptor(mapFNResult)))
                 prevResults.push(mapFNResult)
     
                 //same for prev indices
@@ -308,7 +308,6 @@ export function serialize(obj: any, from: "front" | "back" = "front", wse: WSEve
             }
         }
         if(Array.isArray(value)) return [key, [...value]]
-        if(typeof value === "object") return [key, {...value}]
         return [key, value]
     })
     if(typeof value === "bigint") {
