@@ -81,7 +81,7 @@ export function getAllPropertyDescriptor(obj: object) {
     }
 
     // Traverse the prototype chain and merge all property descriptors
-    while(current.constructor !== Object) {
+    while(current?.constructor !== Object && current != null) {
         descriptor = {...Object.getOwnPropertyDescriptors(current), ...descriptor}
         current = Object.getPrototypeOf(current)
     }
