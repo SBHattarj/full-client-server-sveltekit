@@ -101,7 +101,7 @@ export function objectMap(object: any, mapFN: ((value: any, path: (string | numb
     if(typeof object !== "object") return object
 
     // get keys of the object
-    let keysMap = [Object.keys(object)]
+    let keysMap = [Object.keys(getAllPropertyDescriptor(object))]
 
     // current object property depth and property index
     let currentLevel = 0
@@ -159,7 +159,7 @@ export function objectMap(object: any, mapFN: ((value: any, path: (string | numb
             typeof mapFNResult === "object" 
             && mapFNResult != null
         ) {
-            const resultKeys = Object.keys(mapFNResult)
+            const resultKeys = Object.keys(getAllPropertyDescriptor(mapFNResult))
 
             //Again if resultKeys has no elements cant map through it
             if(
