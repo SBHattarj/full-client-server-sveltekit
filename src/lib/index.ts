@@ -361,7 +361,7 @@ export function deserialize(str: string, from: "front" | "back" = "front", wse: 
                 return new Promise((resolve) => {
                     function onReturn(returned: string) {
                         wse.off(`${id}-${from}`, onReturn)
-                        resolve(deserialize(returned, current, wse))
+                        resolve(deserialize(returned, from, wse))
                     }
                     wse.on(`${callID}-${from}`, onReturn)
                 })
