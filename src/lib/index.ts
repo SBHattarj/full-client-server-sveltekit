@@ -270,9 +270,9 @@ export function serialize(obj: any, from: "front" | "back" = "front", wse: WSEve
         const key: string | number | symbol = path.at(-1)!
 
         //if the value is a native object return it as native with it's id
-        if(value[From] !== from && value[From] != null) {
+        if(value?.[From] !== from && value?.[From] != null) {
             //Add it's detail to meta
-            meta.push([path, {type: "native", from: value[From], id: value[internalID]}])
+            meta.push([path, {type: "native", from: value?.[From], id: value[internalID]}])
             return [key, "native"]
         }
         if(typeof value === "function") {
@@ -363,7 +363,7 @@ export function deserialize(str: string, from: "front" | "back" = "front", wse: 
                 })
             }
             ;(value as any)[internalID] = id
-            ;(value as any)[From] = from
+            if(value != null) (value as any)[From] = from
             return [key, value]
         }
         if(keyMeta?.type === "class") {
