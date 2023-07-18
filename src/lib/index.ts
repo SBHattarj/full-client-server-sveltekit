@@ -96,12 +96,12 @@ export function getAllPropertyDescriptor(obj: object) {
  * @param mapFN - The function for modifying the object
  * @returns A new object with modified data
  */
-export function objectMap(object: any, mapFN: ((value: any, path: (string | number | symbol)[], object: object) => typeof Delete | [string | number | symbol, any] | [string | number | symbol, any, typeof END_DEPTH])) {
+export function objectMap(object: any, mapFN: ((value: any, path: (string | number | symbol)[], current: object, object: object) => typeof Delete | [string | number | symbol, any] | [string | number | symbol, any, typeof END_DEPTH])) {
     // if given object is an premitive type then can't map through it so return
     if(typeof object !== "object") return object
 
     // get keys of the object
-    let keysMap = [Object.keys(getAllPropertyDescriptor(object))]
+    let keysMap = Array.isArray(object) ? [Object.keys(object)] : [Object.keys(getAllPropertyDescriptor(object))]
 
     // current object property depth and property index
     let currentLevel = 0
@@ -130,7 +130,7 @@ export function objectMap(object: any, mapFN: ((value: any, path: (string | numb
 
     // using loop to avoid stack overflow
     while(true) {
-        const mapFNResultNormal = mapFN(current[path.at(-1)!], [...path], object)
+        const mapFNResultNormal = mapFN(current[path.at(-1)!], [...path], current, object)
         
         //if Delete symbol sent back then continuing meaning the key is deleted
         //from the object
@@ -159,7 +159,7 @@ export function objectMap(object: any, mapFN: ((value: any, path: (string | numb
             typeof mapFNResult === "object" 
             && mapFNResult != null
         ) {
-            const resultKeys = Object.keys(getAllPropertyDescriptor(mapFNResult))
+            const resultKeys = Array.isArray(mapFNResult) ? Object.keys(mapFNResult) : Object.keys(getAllPropertyDescriptor(mapFNResult))
 
             //Again if resultKeys has no elements cant map through it
             if(
@@ -265,7 +265,7 @@ export function serialize(obj: any, from: "front" | "back" = "front", wse: WSEve
         | {type: "class", id?: number, from: "front" | "back", classID: number}][] 
         = []
     //Map over the object to allow it to be serialized by JSON
-    const value = objectMap(obj, (value, path) => {
+    const value = objectMap(obj, (value, path, parent) => {
         //the key of the current property
         const key: string | number | symbol = path.at(-1)!
 
@@ -282,7 +282,7 @@ export function serialize(obj: any, from: "front" | "back" = "front", wse: WSEve
             value[internalID] = id
             wse.on(`${id}-${from}`, ({id, args}) => {
                 const deserializedArgs = deserialize(args, current, wse)
-                wse.emit(`${id}-${from}`, serialize(value(...deserializedArgs), from, wse))
+                wse.emit(`${id}-${from}`, serialize(value.call(parent, ...deserializedArgs), from, wse))
             })
             return [key, `id-${from}=${id}`]
         }

@@ -30,7 +30,7 @@ export declare function getAllPropertyDescriptor(obj: object): {
  * @param mapFN - The function for modifying the object
  * @returns A new object with modified data
  */
-export declare function objectMap(object: any, mapFN: ((value: any, path: (string | number | symbol)[], object: object) => typeof Delete | [string | number | symbol, any] | [string | number | symbol, any, typeof END_DEPTH])): any;
+export declare function objectMap(object: any, mapFN: ((value: any, path: (string | number | symbol)[], current: object, object: object) => typeof Delete | [string | number | symbol, any] | [string | number | symbol, any, typeof END_DEPTH])): any;
 /**
  * Serializes a JavaScript object into a JSON string, with support for native objects and functions.
  * @param obj - The object to serialize.
