@@ -81,7 +81,14 @@ function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, fun
     const printer = ts.createPrinter()
     let wsCalls: ts.Statement[] = []
     for(let [key, value] of callNodeCalls) {
-        
+        let idString = "id"
+        let updateString = "update"
+        while(value.locals.has(idString)) {
+            idString = `${idString}1`
+        }
+        while(value.locals.has(updateString)) {
+            updateString = `${updateString}1`
+        }
         wsCalls.push(ts.factory.createExpressionStatement(ts.factory.createCallExpression(
             ts.factory.createPropertyAccessExpression(
                 ts.factory.createIdentifier("wsEvents"),
@@ -109,7 +116,7 @@ function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, fun
                             ts.factory.createVariableDeclarationList(
                                 [
                                     ts.factory.createVariableDeclaration(
-                                        ts.factory.createArrayBindingPattern(["id", ...value.locals, "update"].map(
+                                        ts.factory.createArrayBindingPattern([idString, ...value.locals, updateString].map(
                                             s => ts.factory.createBindingElement(
                                                 undefined,
                                                 undefined,
@@ -166,7 +173,7 @@ function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, fun
                         ),
                         ts.factory.createExpressionStatement(
                             ts.factory.createCallExpression(
-                                ts.factory.createIdentifier("update"),
+                                ts.factory.createIdentifier(updateString),
                                 undefined,
                                 [...value.locals].map(s => ts.factory.createIdentifier(s))
                             )
@@ -182,7 +189,7 @@ function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, fun
                                     ts.factory.createTemplateExpression(ts.factory.createTemplateHead(
                                         `${key}-`
                                     ), [ts.factory.createTemplateSpan(
-                                        ts.factory.createIdentifier("id"),
+                                        ts.factory.createIdentifier(idString),
                                         ts.factory.createTemplateTail("")
                                     )]),
                                     ts.factory.createCallExpression(
