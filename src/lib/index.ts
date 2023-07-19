@@ -282,9 +282,9 @@ export function serialize(obj: any, from: "front" | "back" = "front", wse: WSEve
             cache[id] = value
             meta.push([path, {type: "function", id, from}])
             value[internalID] = id
-            wse.on(`${id}-${from}`, ({id, args}) => {
+            wse.on(`${id}-${from}`, async ({id, args}) => {
                 const deserializedArgs = deserialize(args, current, wse)
-                wse.emit(`${id}-${from}`, serialize(value.call(parent, ...deserializedArgs), from, wse))
+                wse.emit(`${id}-${from}`, serialize(await value.call(parent, ...deserializedArgs), from, wse))
             })
             return [key, `id-${from}=${id}`]
         }
