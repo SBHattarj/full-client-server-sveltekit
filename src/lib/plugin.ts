@@ -6,58 +6,10 @@ import { isFunctionNode, isIdenntifierCallExpression, isModuleDefaultImport, isN
 
 const globalsConst = new Set(["console"])
 
-const wsImport = ts.factory.createImportDeclaration(
-    undefined,
-    ts.factory.createImportClause(
-        true,
-        undefined,
-        ts.factory.createNamedImports([
-            ts.factory.createImportSpecifier(
-                false,
-                undefined,
-                ts.factory.createIdentifier("WebSocketServer")
-            )
-        ]),
-    ),
-    ts.factory.createStringLiteral("ws")
-)
-const wsEventImportStatement = ts.factory.createImportDeclaration(
-    undefined,
-    ts.factory.createImportClause(
-        false,
-        ts.factory.createIdentifier("WSEvents"),
-        ts.factory.createNamedImports([
-            ts.factory.createImportSpecifier(
-                true,
-                undefined,
-                ts.factory.createIdentifier("WSEventHandler")
-            )
-        ])
-    ),
-    ts.factory.createStringLiteral("ws-events")
-)
-
-const serializeDeserializeImportStatement = ts.factory.createImportDeclaration(
-    undefined,
-    ts.factory.createImportClause(
-        false,
-        undefined,
-        ts.factory.createNamedImports([
-            ts.factory.createImportSpecifier(
-                false,
-                undefined,
-                ts.factory.createIdentifier("serialize")
-            ),
-            ts.factory.createImportSpecifier(
-                false,
-                undefined,
-                ts.factory.createIdentifier("deserialize")
-            )
-        ])
-    ),
-    ts.factory.createStringLiteral("full-client-server-sveltekit")
-)
-
+const imports = `import type { WebSocketServer } from "ws";
+import WSEvents, { type WSEventHandler } from "ws-events";
+import { serialize, deserialize } from "full-client-server-sveltekit";
+`
 function createUpdateBlock(s: string) {
     const varIdentifier = ts.factory.createIdentifier(s)
     const updateIdentifier = ts.factory.createIdentifier(`${s}Updated`)
@@ -77,284 +29,51 @@ function createUpdateBlock(s: string) {
     return ifBlock
 }
 
-function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, function: ts.ArrowFunction}>, file = ts.createSourceFile("ws.ts", "", ts.ScriptTarget.Latest)) {
+function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, function: string, id: string}>, file = ts.createSourceFile("ws.ts", "", ts.ScriptTarget.Latest)) {
     const printer = ts.createPrinter()
-    let wsCalls: ts.Statement[] = []
+    let wsCalls: Set<string> = new Set()
     for(let [key, value] of callNodeCalls) {
         let idString = "id"
         let updateString = "update"
+        let callerString = "caller"
         while(value.locals.has(idString)) {
             idString = `${idString}1`
         }
         while(value.locals.has(updateString)) {
             updateString = `${updateString}1`
         }
-        wsCalls.push(ts.factory.createExpressionStatement(ts.factory.createCallExpression(
-            ts.factory.createPropertyAccessExpression(
-                ts.factory.createIdentifier("wsEvents"),
-                "on"
-            ),
-            undefined,
-            [
-                ts.factory.createStringLiteral(key),
-                ts.factory.createFunctionExpression(
-                    [ts.factory.createModifier(ts.SyntaxKind.AsyncKeyword)],
-                    undefined,
-                    undefined,
-                    [],
-                    [
-                        ts.factory.createParameterDeclaration(
-                            undefined,
-                            undefined,
-                            "str"
-                        )
-                    ],
-                    undefined,
-                    ts.factory.createBlock([
-                        ts.factory.createVariableStatement(
-                            [],
-                            ts.factory.createVariableDeclarationList(
-                                [
-                                    ts.factory.createVariableDeclaration(
-                                        ts.factory.createArrayBindingPattern([idString, ...value.locals, updateString].map(
-                                            s => ts.factory.createBindingElement(
-                                                undefined,
-                                                undefined,
-                                                ts.factory.createIdentifier(s)
-                                            )
-                                        )),
-                                        undefined,
-                                        undefined,
-                                        ts.factory.createCallExpression(
-                                            ts.factory.createIdentifier("deserialize"),
-                                            undefined,
-                                            [
-                                                ts.factory.createIdentifier("str"),
-                                                ts.factory.createStringLiteral("front"),
-                                                ts.factory.createIdentifier("wsEvents")
-                                            ]
-                                        )
-                                    )
-                                ],
-                                ts.NodeFlags.Let
-                            )
-                        ),
-                        ts.factory.createVariableStatement(
-                            [],
-                            ts.factory.createVariableDeclarationList(
-                                [
-                                    ts.factory.createVariableDeclaration(
-                                        "caller",
-                                        undefined,
-                                        undefined,
-                                        value.function
-                                    )
-                                ],
-                                ts.NodeFlags.Let
-                            )
-                        ),
-                        ts.factory.createVariableStatement(
-                            undefined,
-                            ts.factory.createVariableDeclarationList(
-                                [
-                                    ts.factory.createVariableDeclaration(
-                                        "result",
-                                        undefined,
-                                        undefined,
-                                        ts.factory.createAwaitExpression(ts.factory.createCallExpression(
-                                            ts.factory.createIdentifier("caller"),
-                                            undefined,
-                                            undefined
-                                        ))
-                                    )
-                                ],
-                                ts.NodeFlags.Const
-                            )
-                        ),
-                        ts.factory.createExpressionStatement(
-                            ts.factory.createCallExpression(
-                                ts.factory.createIdentifier(updateString),
-                                undefined,
-                                [...value.locals].map(s => ts.factory.createIdentifier(s))
-                            )
-                        ),
-                        ts.factory.createExpressionStatement(
-                            ts.factory.createCallExpression(
-                                ts.factory.createPropertyAccessExpression(
-                                    ts.factory.createIdentifier("wsEvents"),
-                                    "emit"
-                                ),
-                                undefined,
-                                [
-                                    ts.factory.createTemplateExpression(ts.factory.createTemplateHead(
-                                        `${key}-`
-                                    ), [ts.factory.createTemplateSpan(
-                                        ts.factory.createIdentifier(idString),
-                                        ts.factory.createTemplateTail("")
-                                    )]),
-                                    ts.factory.createCallExpression(
-                                        ts.factory.createIdentifier("serialize"),
-                                        undefined,
-                                        [
-                                            ts.factory.createIdentifier("result"),
-                                            ts.factory.createStringLiteral("back"),
-                                            ts.factory.createIdentifier("wsEvents")
-                                        ]
-                                    )
-                                ]
-                            )
-                        )
-                    ], true),
-                ),
-            ]
-        )))
+        while(value.locals.has(callerString)) {
+            callerString = `${callerString}1`
+        }
+        wsCalls.add(`
+            wsEvents.on("${key}", async function (str) {
+                let [${[idString, ...value.locals,  updateString].join(", ")}] = deserialize(str, "front", wsEvents);
+                let ${callerString} = ${value.function.replace(/import\((["'`])\..?/g, `import($1${value.id.replace(/\/[^\/]*$/, "/")}`)}
+
+                const result = await caller();
+                update(${[...value.locals].join(", ")});
+                wsEvents.emit(\`${key}-$\{id}\`, serialize(result, "back", wsEvents));
+            });
+        `)
     }
-    const wssConnectionBlock = ts.factory.createBlock([
-        ts.factory.createVariableStatement(
-            undefined,
-            ts.factory.createVariableDeclarationList(
-                    [
-                    ts.factory.createVariableDeclaration(
-                        "wsEvents",
-                        undefined,
-                        undefined,
-                        ts.factory.createCallExpression(
-                            ts.factory.createIdentifier("WSEvents"),
-                            undefined,
-                            [
-                                ts.factory.createIdentifier("ws")
-                            ]
-                        )
-                    )
-                ],
-                ts.NodeFlags.Const
-            ),
-        ),
-        ...wsCalls,
-        ts.factory.createExpressionStatement(
-            ts.factory.createCallExpression(
-                ts.factory.createIdentifier("cb"),
-                undefined,
-                [
-                    ts.factory.createIdentifier("wsEvents")
-                ]
-            )
-        )
-    ], true)
-    const returnHandlerFunction = ts.factory.createFunctionExpression(
-        undefined,
-        undefined,
-        "handleWse",
-        undefined,
-        [
-            ts.factory.createParameterDeclaration(
-                undefined,
-                undefined,
-                "wss",
-
-            )
-        ],
-        undefined,
-        ts.factory.createBlock([
-            ts.factory.createExpressionStatement(
-                ts.factory.createCallExpression(
-                    ts.factory.createPropertyAccessExpression(
-                        ts.factory.createIdentifier("wss"),
-                        "on"
-                    ),
-                    undefined,
-                    [
-                        ts.factory.createStringLiteral("connection"),
-                        ts.factory.createArrowFunction(
-                            undefined,
-                            undefined,
-                            [
-                                ts.factory.createParameterDeclaration(
-                                    undefined,
-                                    undefined,
-                                    "ws"
-                                )
-                            ],
-                            undefined,
-                            undefined,
-                            wssConnectionBlock
-                        )
-                    ]
-                )
-            )
-        ], true)
-    )
-
-    const defaultExportStatement = ts.factory.createExportDefault(
-        ts.factory.createFunctionExpression(
-            undefined,
-            undefined,
-            "handleWs",
-            undefined,
-            [
-                ts.factory.createParameterDeclaration(
-                    undefined,
-                    undefined,
-                    "cb",
-                    undefined,
-                    ts.factory.createFunctionTypeNode(
-                        undefined,
-                        [
-                            ts.factory.createParameterDeclaration(
-                                undefined,
-                                undefined,
-                                "wse",
-                                undefined,
-                                ts.factory.createTypeReferenceNode("WSEventHandler"),
-                            )
-                        ],
-                        ts.factory.createTypeReferenceNode("any")
-                    )
-                )
-            ],
-            ts.factory.createFunctionTypeNode(
-                undefined,
-                [
-                    ts.factory.createParameterDeclaration(
-                        undefined,
-                        undefined,
-                        "wse",
-                        undefined,
-                        ts.factory.createTypeReferenceNode("WebSocketServer"),
-
-                    )
-                ],
-                ts.factory.createTypeReferenceNode("void")
-            ),
-            ts.factory.createBlock([
-                ts.factory.createReturnStatement(
-                    returnHandlerFunction
-                )
-            ], true)
-        )
-    )
+    const wssConnectionBlock = `
+            const wsEvents = WSEvents(ws);
+            ${[...wsCalls].join("\n")}
+            cb(wsEvents);
+    `
+    const returnHandlerFunction = `function handleWse(wse) {
+        wse.on("connection", ws => {
+            ${wssConnectionBlock}
+        })
+    }
+    `
+    const defaultExportStatement = `
+export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSocketServer) => void {
+    return ${returnHandlerFunction}
+};
+    `
     
-    const exportString = printer.printNode(
-        ts.EmitHint.Unspecified, 
-        defaultExportStatement, 
-        file
-    )
-    const wsImportString = printer.printNode(
-        ts.EmitHint.Unspecified,
-        wsImport,
-        file
-    )
-    const wsEventImportString = printer.printNode(
-        ts.EmitHint.Unspecified,
-        wsEventImportStatement,
-        file
-    )
-    const libImportString = printer.printNode(
-        ts.EmitHint.Unspecified,
-        serializeDeserializeImportStatement,
-        file
-    )
-    return `${wsImportString}\n${wsEventImportString}\n${libImportString}\n${exportString}`
+    return `${imports}\n${defaultExportStatement}`
 }
 
 function fixRelativeImport(ast: ts.Node, file: string) {
@@ -384,9 +103,26 @@ function fixRelativeImport(ast: ts.Node, file: string) {
 }
 
 export function serverBrowserSync() {
-    const callNodeCalls: Map<string, {locals: Set<string>, function: ts.ArrowFunction}> = new Map();
+    const callNodeCalls: Map<string, {locals: Set<string>, function: string, id: string}> = new Map();
     return {
         name: 'transform-node',
+        async config(_: any, {command}: {command: string}) {
+            if(command === "build") return
+                await fs.writeFile(path.resolve(process.cwd(), "src", "lib", "ws.ts"), `
+import type { WebSocketServer } from "ws";
+import WSEvents, { type WSEventHandler } from "ws-events";
+import { serialize, deserialize } from "full-client-server-sveltekit";
+export default (function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSocketServer) => void {
+    return function handleWse(wss) {
+        wss.on("connection", ws => {
+            const wsEvents = WSEvents(ws);
+            cb(wsEvents);
+        });
+    };
+});
+                `)
+            
+        },
         async transform(code: string, id: string, options?: {ssr?: boolean}) {
             if(!code.includes("full-client-server-sveltekit")) return
             if(options?.ssr) return
@@ -451,8 +187,9 @@ export function serverBrowserSync() {
                     callNodeCalls.set(
                         `${file}-${id}`, 
                         {
-                            function: ast.arguments[0] as ts.ArrowFunction,
-                            locals: shared
+                            function: ast.arguments[0].getText(),
+                            locals: shared,
+                            id: file
                         }
                     )
                     const libCall = ts.factory.createIdentifier("callNode")
