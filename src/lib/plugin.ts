@@ -50,20 +50,15 @@ function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, fun
                 let [${[idString, ...value.locals,  updateString].join(", ")}] = deserialize(str, "front", wsEvents);
                 let ${callerString} = ${
                     value.function.replace(
-                        /import\((["'`])\.?/g, 
-                        `import($1${
-                            value.id.replace(
-                                /\/[^\/]*$/, 
-                                ""
+                        /import\((["'`])(\.\.?)/g, 
+                        (_: string, quote: string, prefix: string) => {
+                            const newPrefix = path.resolve(
+                                value.id.replace(/\/[^\/]*$/, ""),
+                                prefix
                             )
-                        }`
-                    ).replace(
-                        /import\((["'`])\.\./g, 
-                        `import($1${value.id.replace(
-                            /\/[^\/]*\/[^\/]*$/, 
-                            ""
-                        )}`
-                    )
+                            return `import(${quote}${newPrefix}`
+                        }
+                    )                
                 }
 
                 const result = await caller();
