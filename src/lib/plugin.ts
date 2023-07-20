@@ -60,7 +60,7 @@ function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, fun
                     ).replace(
                         /import\((["'`])\.\./g, 
                         `import($1${value.id.replace(
-                            /\/[^\/]*$/, 
+                            /\/[^\/]*\/[^\/]*$/, 
                             ""
                         )}`
                     )
