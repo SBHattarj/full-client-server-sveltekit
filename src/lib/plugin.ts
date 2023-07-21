@@ -3,12 +3,12 @@ import ts, { type ConciseBody, type Identifier } from "typescript";
 import path from "path"
 import fs from "fs-extra"
 import { isFunctionNode, isIdenntifierCallExpression, isModuleDefaultImport, isNodeDeclaration } from "./utils.js";
-
+const fullClientServerImport = "full-client-server-sveltekit"
 const globalsConst = new Set(["console"])
 
 const imports = `import type { WebSocketServer } from "ws";
 import WSEvents, { type WSEventHandler } from "ws-events";
-import { serialize, deserialize } from "full-${""}client-server-sveltekit";
+import { serialize, deserialize } from "${fullClientServerImport}";
 `
 function createUpdateBlock(s: string) {
     const varIdentifier = ts.factory.createIdentifier(s)
@@ -135,7 +135,7 @@ export function serverBrowserSync() {
                 await fs.writeFile(path.resolve(process.cwd(), "src", "lib", "ws.ts"), `
 import type { WebSocketServer } from "ws";
 import WSEvents, { type WSEventHandler } from "ws-events";
-import { serialize, deserialize } from "full${""}-client-server-sveltekit";
+import { serialize, deserialize } from "${fullClientServerImport}";
 export default (function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSocketServer) => void {
     return function handleWse(wss) {
         wss.on("connection", ws => {
