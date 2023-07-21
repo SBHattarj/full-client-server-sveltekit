@@ -46,8 +46,13 @@ function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, fun
             callerString = `${callerString}1`
         }
         wsCalls.add(`
-            wsEvents.on("${key}", async function (str) {
-                let [${[idString, ...value.locals,  updateString].join(", ")}] = deserialize(str, "front", wsEvents);
+            wsEvents.on("${key}", async function (this: typeof data, str: string) {
+                let [${[idString, ...value.locals,  updateString].join(", ")}] = deserialize(
+                    str, 
+                    "front", 
+                    wsEvents,
+                    this.cache
+                );
                 let ${callerString} = ${
                     value.function.replace(
                         /import\((["'`])(\.\.?)/g, 
@@ -63,8 +68,13 @@ function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, fun
 
                 const result = await caller();
                 update(${[...value.locals].join(", ")});
-                wsEvents.emit(\`${key}-$\{${idString}}\`, serialize(result, "back", wsEvents));
-            });
+                wsEvents.emit(\`${key}-$\{${idString}}\`, serialize(
+                    result, 
+                    "back", 
+                    wsEvents,
+                    this.cache
+                ));
+            }.bind(data));
         `)
     }
     const wssConnectionBlock = `
@@ -74,6 +84,12 @@ function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, fun
     `
     const returnHandlerFunction = `function handleWse(wse) {
         wse.on("connection", ws => {
+            let data = {
+                cache: {}
+            }
+            ws.onclose = function () {
+                delete (data as any).cache
+            }
             ${wssConnectionBlock}
         })
     }
@@ -90,11 +106,8 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
 function fixRelativeImport(ast: ts.Node, file: string) {
     if(ts.isCallExpression(ast)) {
         if(ast.expression.getText() === "import") {
-            console.log(ast.arguments[0].getText())
             if(ts.isStringLiteral(ast.arguments[0]) && (ast.arguments[0].text.startsWith("./") || ast.arguments[0].text.startsWith("../"))) {
                 const newImportPath = path.resolve(file.replace(/\/[^\/]+$/, ""), ast.arguments[0].getText().replaceAll('"', "").replaceAll("'", ""))
-                console.log(newImportPath)
-                console.log(newImportPath)
                 const newImportPathNode = ts.factory.createStringLiteral(newImportPath)
                 const newImportCall = ts.factory.createCallExpression(
                     ast.expression,
@@ -126,6 +139,12 @@ import { serialize, deserialize } from "full${""}-client-server-sveltekit";
 export default (function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSocketServer) => void {
     return function handleWse(wss) {
         wss.on("connection", ws => {
+            const data = {
+                cache: {}
+            }
+            ws.onclose = function () {
+                delete (data as any).cache
+            }
             const wsEvents = WSEvents(ws);
             cb(wsEvents);
         });

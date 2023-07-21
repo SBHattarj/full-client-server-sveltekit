@@ -257,7 +257,12 @@ const cache: {[key: number]: any} = {}
  * @param wse - The WSEventHandler used to serialize and deserialize functions.
  * @returns A JSON string representing the serialized object.
  */
-export function serialize(obj: any, from: "front" | "back" = "front", wse: WSEventHandler) {
+export function serialize(
+    obj: any, 
+    from: "front" | "back" = "front", 
+    wse: WSEventHandler, 
+    cacheMain = cache
+) {
     //where we going from
     const current = from === "back" ? "front" : "back"
     //meta object that holds meta info of the serialized object for deserealization
@@ -279,7 +284,7 @@ export function serialize(obj: any, from: "front" | "back" = "front", wse: WSEve
         }
         if(typeof value === "function") {
             const id = value[internalID] ?? ids.next().value!
-            cache[id] = value
+            cacheMain[id] = value
             meta.push([path, {type: "function", id, from}])
             value[internalID] = id
             wse.on(`${id}-${from}`, async ({id, args}) => {
@@ -294,7 +299,7 @@ export function serialize(obj: any, from: "front" | "back" = "front", wse: WSEve
             if(typeof classSerialize === "function") {
                 const id = value[internalID] ?? ids.next().value!
                 if(typeof value !== "bigint") value[internalID] = id
-                cache[id] = value
+                cacheMain[id] = value
                 meta.push([path, {
                     type: "class", 
                     id, 
@@ -329,7 +334,12 @@ export function serialize(obj: any, from: "front" | "back" = "front", wse: WSEve
     )
 }
 
-export function deserialize(str: string, from: "front" | "back" = "front", wse: WSEventHandler) {
+export function deserialize(
+    str: string, 
+    from: "front" | "back" = "front", 
+    wse: WSEventHandler,
+    cacheMain = cache
+) {
     const current = from === "back" ? "front" : "back"
     const {meta, value} = JSON.parse(str) as {
         meta: [
@@ -350,7 +360,7 @@ export function deserialize(str: string, from: "front" | "back" = "front", wse: 
         )?.[1]
         if(keyMeta?.from !== from) {
             if(keyMeta?.id != null) {
-                return [key, cache[keyMeta.id]]
+                return [key, cacheMain[keyMeta.id]]
             }
         }
         if(keyMeta?.type === "function") {
@@ -380,43 +390,6 @@ export function deserialize(str: string, from: "front" | "back" = "front", wse: 
                 return [key, serializedValue]
             }
         }
-        // if(keyMeta?.type === "class") {
-        //     const id = keyMeta.id!
-        //     value[internal] = {}
-        //     value[internalID] = id
-        //     for(let key in value) {
-        //         const fullPath = [...path, key]
-        //         const classKeyMeta = meta.find(
-        //             ([metaPath]) => 
-        //                 metaPath.length === path.length 
-        //                 && metaPath.every((key, index) => key === fullPath[index])
-        //         )?.[1]
-        //         if(classKeyMeta?.type === "valued") {
-        //             const id = classKeyMeta.id!
-        //             value[internal][key] = value[key].value
-        //             delete value[key].value
-        //             value[key].get = function () {
-        //                 return (this as any)[internal][key]
-        //             }
-        //             value[key].set = function (given: any) {
-        //                 (this as any)[internal][key] = given
-        //             }
-        //             Object.defineProperty(value, key, value[key])
-        //             continue
-        //         }
-        //         if(classKeyMeta?.type === "computed") {
-        //             const id = classKeyMeta.id!
-        //             value[key].get = function get() {
-        //                 //! not implemented
-        //             }
-        //             value[key].set = function set(given: any) {
-        //                 //! not implemented
-        //             }
-        //             Object.defineProperty(value, key, value[key])
-        //             continue
-        //         }
-        //     }
-        // }
         return [key, value]
     })
 }

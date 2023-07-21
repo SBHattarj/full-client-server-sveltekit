@@ -6,23 +6,44 @@ import { serialize, deserialize } from "full-client-server-sveltekit";
 export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSocketServer) => void {
     return function handleWse(wse) {
         wse.on("connection", ws => {
+            let data = {
+                cache: {}
+            }
+            ws.onclose = function () {
+                delete (data as any).cache
+            }
             
             const wsEvents = WSEvents(ws);
             
-            wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-0", async function (str) {
-                let [id, update] = deserialize(str, "front", wsEvents);
+            wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-0", async function (this: typeof data, str: string) {
+                let [id, update] = deserialize(
+                    str, 
+                    "front", 
+                    wsEvents,
+                    this.cache
+                );
                 let caller = () => {
 		console.log("hello");
 	}
 
                 const result = await caller();
                 update();
-                wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-0-${id}`, serialize(result, "back", wsEvents));
-            });
+                wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-0-${id}`, serialize(
+                    result, 
+                    "back", 
+                    wsEvents,
+                    this.cache
+                ));
+            }.bind(data));
         
 
-            wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-1", async function (str) {
-                let [id, hello, constant, $$invalidate, fn, bigInt, update] = deserialize(str, "front", wsEvents);
+            wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-1", async function (this: typeof data, str: string) {
+                let [id, hello, constant, $$invalidate, fn, bigInt, update] = deserialize(
+                    str, 
+                    "front", 
+                    wsEvents,
+                    this.cache
+                );
                 let caller = async () => {
 		(await import("/home/mav/full-client-server-sveltekit/src/routes/toBeImport")).say();
 		console.log(hello);
@@ -38,23 +59,38 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
 
                 const result = await caller();
                 update(hello, constant, $$invalidate, fn, bigInt);
-                wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-1-${id}`, serialize(result, "back", wsEvents));
-            });
+                wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-1-${id}`, serialize(
+                    result, 
+                    "back", 
+                    wsEvents,
+                    this.cache
+                ));
+            }.bind(data));
         
 
-            wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-2", async function (str) {
-                let [id, $$invalidate, counter, update] = deserialize(str, "front", wsEvents);
+            wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-2", async function (this: typeof data, str: string) {
+                let [id, $$invalidate, counter, update] = deserialize(
+                    str, 
+                    "front", 
+                    wsEvents,
+                    this.cache
+                );
                 let caller = () => {
 			$$invalidate(1, counter = counter + 1);
 			console.log(counter);
 			console.warn("this works again");
-			return "h";
+			return new Date();
 		}
 
                 const result = await caller();
                 update($$invalidate, counter);
-                wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-2-${id}`, serialize(result, "back", wsEvents));
-            });
+                wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-2-${id}`, serialize(
+                    result, 
+                    "back", 
+                    wsEvents,
+                    this.cache
+                ));
+            }.bind(data));
         
             cb(wsEvents);
     

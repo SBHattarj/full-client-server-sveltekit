@@ -43,7 +43,7 @@
         counter = counter + 1
         console.log(counter)
         console.warn("this works again")
-        return "h"
+        return new Date()
     })
 }}>
     increment {counter}
