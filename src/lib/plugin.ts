@@ -26,11 +26,21 @@ function createUpdateBlock(s: string) {
             ts.factory.createExpressionStatement(updateAssignment)
         ])
     )
-    return ifBlock
+    const tryBlock = ts.factory.createTryStatement(
+        ts.factory.createBlock([
+            ifBlock
+        ]),
+        ts.factory.createCatchClause(
+            undefined,
+            ts.factory.createBlock([])
+        ),
+        undefined
+
+    )
+    return tryBlock
 }
 
 function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, function: string, id: string}>, file = ts.createSourceFile("ws.ts", "", ts.ScriptTarget.Latest)) {
-    const printer = ts.createPrinter()
     let wsCalls: Set<string> = new Set()
     for(let [key, value] of callNodeCalls) {
         let idString = "id"
@@ -67,7 +77,8 @@ function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, fun
                 }
 
                 const result = await caller();
-                update(${[...value.locals].join(", ")});
+                console.log(${updateString})
+                ${updateString}(${[...value.locals].join(", ")});
                 wsEvents.emit(\`${key}-$\{${idString}}\`, serialize(
                     result, 
                     "back", 
@@ -213,7 +224,6 @@ export default (function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSo
                         saveNonLocals: true
                     })
                     let shared = new Set(Array.from(nonLocalsInner).filter(x => prevLocals.has(x) && !globalsConst.has(x)))
-                    fixRelativeImport(ast.arguments[0].body, file)
                     callNodeCalls.set(
                         `${file}-${id}`, 
                         {
@@ -251,6 +261,16 @@ export default (function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSo
                     Object.defineProperties(ast, Object.getOwnPropertyDescriptors(callNodeCall))
                     isChanged = true
                     return {locals, nonLocals}
+                }
+                if(ts.isPropertyAccessExpression(ast)) {
+                    return codeTransformAST({
+                        ast: ast.getChildren()[0],
+                        isDeclaration: isNodeDeclaration(ast, isDeclaration, isBindingName),
+                        isBindingName: false,
+                        file,
+                        prevLocals,
+                        saveNonLocals
+                    })
                 }
                 for(let node of ast.getChildren()) {
                     const transformASTResult = codeTransformAST({

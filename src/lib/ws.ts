@@ -27,6 +27,7 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
 	}
 
                 const result = await caller();
+                console.log(update)
                 update();
                 wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-0-${id}`, serialize(
                     result, 
@@ -38,7 +39,7 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
         
 
             wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-1", async function (this: typeof data, str: string) {
-                let [id, hello, constant, $$invalidate, fn, bigInt, update] = deserialize(
+                let [id, hello, constant, $$invalidate, fn, AInstance, bigInt, update] = deserialize(
                     str, 
                     "front", 
                     wsEvents,
@@ -50,6 +51,8 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
 		console.log(constant);
 		$$invalidate(0, hello = "hello client");
 		console.log(await fn());
+		console.log(AInstance.c());
+		console.log(AInstance.a());
 		console.log("hello after fn");
 		console.log(bigInt);
 		$$invalidate(3, bigInt = 12n);
@@ -58,7 +61,8 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
 	}
 
                 const result = await caller();
-                update(hello, constant, $$invalidate, fn, bigInt);
+                console.log(update)
+                update(hello, constant, $$invalidate, fn, AInstance, bigInt);
                 wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-1-${id}`, serialize(
                     result, 
                     "back", 
@@ -69,7 +73,7 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
         
 
             wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-2", async function (this: typeof data, str: string) {
-                let [id, $$invalidate, counter, update] = deserialize(
+                let [id, $$invalidate, counter, a, update] = deserialize(
                     str, 
                     "front", 
                     wsEvents,
@@ -79,11 +83,12 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
 			$$invalidate(1, counter = counter + 1);
 			console.log(counter);
 			console.warn("this works again");
-			return new Date();
+			return { a: Promise.resolve("hello") };
 		}
 
                 const result = await caller();
-                update($$invalidate, counter);
+                console.log(update)
+                update($$invalidate, counter, a);
                 wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-2-${id}`, serialize(
                     result, 
                     "back", 

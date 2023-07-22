@@ -1,6 +1,18 @@
 <script lang="ts">
     import node from "full-client-server-sveltekit"
     import { browser } from "$app/environment";
+    class A {
+        c() {
+            console.log(this.b)
+        }
+        a() {
+            console.log("a", this.b)
+        }
+        constructor(public b: number) {
+            
+        }
+    }
+    const AInstance = new A(1)
     node(() => {
         console.log("hello")
     })
@@ -18,6 +30,8 @@
         console.log(constant)
         hello = "hello client"
         console.log(await fn())
+        console.log(AInstance.c())
+        console.log(AInstance.a())
         console.log("hello after fn")
         console.log(bigInt)
         bigInt = 12n
@@ -43,7 +57,11 @@
         counter = counter + 1
         console.log(counter)
         console.warn("this works again")
-        return new Date()
+        return {
+            a: Promise.resolve("hello"),
+        }
+    }).then(async (e) => {
+        console.log(await e.a)
     })
 }}>
     increment {counter}

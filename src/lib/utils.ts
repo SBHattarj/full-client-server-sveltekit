@@ -25,5 +25,6 @@ export function isNodeDeclaration(node: ts.Node, isDeclaration: boolean, isBindi
                         || (ts.isParameter(node))
                         || (isDeclaration && (isBindingName || ts.isBindingName(node))))
                         && !ts.isBlock(node)
+                        && !ts.isPropertyName(node)
 }
 

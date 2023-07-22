@@ -85,7 +85,7 @@ export function getAllPropertyDescriptor(obj: object) {
         descriptor = {...Object.getOwnPropertyDescriptors(current), ...descriptor}
         current = Object.getPrototypeOf(current)
     }
-
+    delete (descriptor as any).constructor
     // Return the merged property descriptors
     return descriptor
 }
@@ -271,36 +271,54 @@ export function serialize(
         {type: string, id?: number, from: "front" | "back"}
         | {type: "class", id?: number, from: "front" | "back", classID: number}][] 
         = []
-    //Map over the object to allow it to be serialized by JSON
-    const value = objectMap(obj, (value, path, parent) => {
-        //the key of the current property
-        const key: string | number | symbol = path.at(-1)!
-
-        //if the value is a native object return it as native with it's id
+    const stringifyPath: string[] = []
+    const prevObject: any[] = []
+    const prevTrueObject: any[] = []
+    const value = JSON.stringify(obj, function (key, value)  {
+        if(this != null) {
+            let objectindex = prevObject.indexOf(this)
+            prevObject.splice(objectindex + 1)
+            prevTrueObject.splice(objectindex + 1)
+            stringifyPath.splice(objectindex)
+        }
+        if(key == '' || key == null) {
+            if(typeof value === 'bigint') {
+                meta.push([[], {type: "bigint", from}])
+                return value.toString()
+            }
+        } else
+            stringifyPath.push(key)
         if(value?.[From] !== from && value?.[From] != null) {
             //Add it's detail to meta
-            meta.push([path, {type: "native", from: value?.[From], id: value[internalID]}])
-            return [key, "native"]
+            meta.push([[...stringifyPath], {type: "native", from: value?.[From], id: value[internalID]}])
+            stringifyPath.pop()
+            return "native"
         }
         if(typeof value === "function") {
             const id = value[internalID] ?? ids.next().value!
             cacheMain[id] = value
-            meta.push([path, {type: "function", id, from}])
+            meta.push([[...stringifyPath], {type: "function", id, from}])
+            stringifyPath.pop()
             value[internalID] = id
+            let self = prevTrueObject.at(-1)
             wse.on(`${id}-${from}`, async ({id, args}) => {
                 const deserializedArgs = deserialize(args, current, wse)
-                wse.emit(`${id}-${from}`, serialize(await value.call(parent, ...deserializedArgs), from, wse))
+                if(self?.constructor === Object) {
+                    wse.emit(`${id}-${from}`, serialize(await value(...deserializedArgs), from, wse))
+                    return
+                }
+                wse.emit(`${id}-${from}`, serialize(await value.call(self, ...deserializedArgs), from, wse))
             })
-            return [key, `id-${from}=${id}`]
+            return `id-${from}=${id}`
         }
-        if(Array.isArray(value)) return [key, [...value]]
+        
         if((typeof value === "object" && value != null) || typeof value === "bigint") {
             const {serialize: classSerialize} = globalThis.shareMap.get(value.constructor) ?? {}
             if(typeof classSerialize === "function") {
                 const id = value[internalID] ?? ids.next().value!
                 if(typeof value !== "bigint") value[internalID] = id
                 cacheMain[id] = value
-                meta.push([path, {
+                meta.push([[...stringifyPath], {
                     type: "class", 
                     id, 
                     from, 
@@ -310,20 +328,44 @@ export function serialize(
                         ([cl]) => cl === value.constructor
                     )
                 }])
-                return [key, classSerialize(value)]
+                let serializedValue = classSerialize(value)
+                if(typeof serializedValue !== "object") {
+                    stringifyPath.pop()
+                }
+                if(typeof serializedValue !== "object") {
+                    prevObject.push(serializedValue)
+                    prevTrueObject.push(value)
+                }
+                return serializedValue
 
             }
-            const resultValue = Object.keys(getAllPropertyDescriptor(value)).reduce((acc, key) => {
-                return { ...acc, [key]: value[key] }
-            }, {})
-            return [key, resultValue]
+            prevTrueObject.push(value)
+            getAllPropertyDescriptor(value)
+            if(value.constructor !== Object && !Array.isArray(value)) {
+                const resultObject = {} as any
+                const props = getAllPropertyDescriptor(value)
+                for(let [key, value] of Object.entries(props)) {
+                    Object.defineProperty(resultObject, key, {
+                        ...value,
+                        enumerable: true,
+                    })
+                }
+                let id = value[internalID] ?? ids.next().value!
+                value[internalID] = id
+                cacheMain[id] = value
+                meta.push([[...stringifyPath], {id, type: "unknowClass", from}])
+                prevObject.push(resultObject)
+                return resultObject
+            }
+            prevObject.push(value)
+            
+            return value
         }
-        return [key, value]
-    })
-    if(typeof value === "bigint") {
-        meta.push([[], {type: "bigint", from}])
-        return JSON.stringify({meta, value: value.toString()}, null, 4)
-    }
+        stringifyPath.pop()
+        return value
+
+    }, 4)
+    //Map over the object to allow it to be serialized by JSON
     return JSON.stringify(
         {
             meta,
@@ -341,13 +383,14 @@ export function deserialize(
     cacheMain = cache
 ) {
     const current = from === "back" ? "front" : "back"
-    const {meta, value} = JSON.parse(str) as {
+    const {meta, value: valueStr} = JSON.parse(str) as {
         meta: [
             (string | number | symbol)[], 
             {type: string, id?: number, from: "front" | "back"} 
             | {type: "class", id?: number, from: "front" | "back", classID: number}][], 
         value: any
     }
+    const value = valueStr == null ? valueStr : JSON.parse(valueStr)
     if(meta.length === 1 && meta[0][0].length === 0) {
         if(meta[0][1].type === "bigint") return BigInt(value)
     }
@@ -377,7 +420,7 @@ export function deserialize(
                 })
             }
             ;(value as any)[internalID] = id
-            if(value != null) (value as any)[From] = from
+            ;(value as any)[From] = from
             return [key, value]
         }
         if(keyMeta?.type === "class") {
@@ -386,9 +429,16 @@ export function deserialize(
             const {deserialize: classDeserialize} = [...globalThis.shareMap][classID][1] ?? {}
             if(typeof classDeserialize === "function") {
                 const serializedValue = classDeserialize(value)
-                if(typeof serializedValue !== "bigint") serializedValue[internalID] = id
+                if(typeof serializedValue !== "bigint") {
+                    serializedValue[internalID] = id
+                    serializedValue[From] = keyMeta.from
+                }
                 return [key, serializedValue]
             }
+        }
+        if(keyMeta?.id != null && value != null && value.from === from) {
+            value[internalID] = keyMeta.id
+            value[From] = from
         }
         return [key, value]
     })
