@@ -1,5 +1,5 @@
-import ts, { type ConciseBody, type Identifier } from "typescript";
-import getTsConfig, { getTsconfig } from "get-tsconfig";
+import ts from "typescript";
+import { getTsconfig } from "get-tsconfig";
 import fse from "fs-extra"
 import path from "path"
 import fs from "fs-extra"
