@@ -38,8 +38,18 @@ export declare function objectMap(object: any, mapFN: ((value: any, path: (strin
  * @param wse - The WSEventHandler used to serialize and deserialize functions.
  * @returns A JSON string representing the serialized object.
  */
-export declare function serialize(obj: any, from: "front" | "back" | undefined, wse: WSEventHandler): string;
-export declare function deserialize(str: string, from: "front" | "back" | undefined, wse: WSEventHandler): any;
+export declare function serialize(
+    obj: any, 
+    from: "front" | "back" | undefined,
+    wse: WSEventHandler,
+    cache: any
+): string;
+export declare function deserialize(
+    str: string, 
+    from: "front" | "back" | undefined, 
+    wse: WSEventHandler, 
+    cache: any
+): any;
 declare let wse: Promise<WSEventHandler> | null;
 export declare function callNode(id: string, share: any[], update?: (...args: any[]) => any): Promise<unknown> | undefined;
 export default function node<T>(nodeFunction: () => T): T extends Promise<Awaited<T>> ? T : Promise<T>;
