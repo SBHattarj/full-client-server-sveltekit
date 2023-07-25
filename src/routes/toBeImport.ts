@@ -1,3 +1,4 @@
-export function say() {
-    console.log("hello");
+export function say(hi = "") {
+    console.log("hello", hi);
 }
+export default {say}

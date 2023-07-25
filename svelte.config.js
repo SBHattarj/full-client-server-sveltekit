@@ -14,7 +14,9 @@ const config = {
 		// See https://kit.svelte.dev/docs/adapters for more information about adapters.
 		adapter: adapter(),
 		alias: {
-			"full-client-server-sveltekit": path.resolve(process.cwd(), "src", "lib")
+			"full-client-server-sveltekit": path.resolve(process.cwd(), "src", "lib"),
+            "server:": path.resolve(process.cwd(), "src"),
+            "server:npm:*": `${path.resolve(process.cwd(), "node_modules/")}/*`,
 		}
 	}
 };

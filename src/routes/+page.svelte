@@ -1,6 +1,7 @@
 <script lang="ts">
     import node from "full-client-server-sveltekit"
-    import { browser } from "$app/environment";
+    import { say } from "server:/routes/toBeImport"
+    
     class A {
         c() {
             console.log(this.b)
@@ -14,6 +15,7 @@
     }
     const AInstance = new A(1)
     node(() => {
+        say()
         console.log("hello")
     })
     function fn() {

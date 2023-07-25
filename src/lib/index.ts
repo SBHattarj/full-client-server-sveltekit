@@ -299,7 +299,9 @@ export function serialize(
             cacheMain[id] = value
             meta.push([[...stringifyPath], {type: "function", id, from}])
             stringifyPath.pop()
-            value[internalID] = id
+            try {
+                value[internalID] = id
+            } catch {}
             let self = prevTrueObject.at(-1)
             wse.on(`${id}-${from}`, async ({id, args}) => {
                 const deserializedArgs = deserialize(args, current, wse)
@@ -316,7 +318,9 @@ export function serialize(
             const {serialize: classSerialize} = globalThis.shareMap.get(value.constructor) ?? {}
             if(typeof classSerialize === "function") {
                 const id = value[internalID] ?? ids.next().value!
-                if(typeof value !== "bigint") value[internalID] = id
+                try {
+                    if(typeof value !== "bigint") value[internalID] = id
+                } catch {}
                 cacheMain[id] = value
                 meta.push([[...stringifyPath], {
                     type: "class", 
@@ -351,7 +355,9 @@ export function serialize(
                     })
                 }
                 let id = value[internalID] ?? ids.next().value!
-                value[internalID] = id
+                try {
+                    value[internalID] = id
+                } catch {}
                 cacheMain[id] = value
                 meta.push([[...stringifyPath], {id, type: "unknowClass", from}])
                 prevObject.push(resultObject)
@@ -419,8 +425,10 @@ export function deserialize(
                     wse.on(`${callID}-${from}`, onReturn)
                 })
             }
-            ;(value as any)[internalID] = id
-            ;(value as any)[From] = from
+            try {
+                ;(value as any)[internalID] = id
+                ;(value as any)[From] = from
+            } catch {}
             return [key, value]
         }
         if(keyMeta?.type === "class") {
@@ -430,15 +438,20 @@ export function deserialize(
             if(typeof classDeserialize === "function") {
                 const serializedValue = classDeserialize(value)
                 if(typeof serializedValue !== "bigint") {
-                    serializedValue[internalID] = id
-                    serializedValue[From] = keyMeta.from
+                    try {
+                        serializedValue[internalID] = id
+                        serializedValue[From] = keyMeta.from
+                    } catch {}
                 }
                 return [key, serializedValue]
             }
         }
         if(keyMeta?.id != null && value != null && value.from === from) {
-            value[internalID] = keyMeta.id
-            value[From] = from
+            try {
+                
+                value[internalID] = keyMeta.id
+                value[From] = from
+            } catch {}
         }
         return [key, value]
     })
@@ -460,7 +473,7 @@ if(BROWSER) {
     // wse = WsEvents(ws)
 }
 
-export function callNode(id: string, share: any[], update: (...args: any[]) => any = () => {}) {
+function callNode(id: string, share: any[], update: (...args: any[]) => any = () => {}) {
     if(wse == null) return
     return new Promise(async (resolve) => {
         const callId = callIds.next().value
@@ -474,6 +487,7 @@ export function callNode(id: string, share: any[], update: (...args: any[]) => a
         ;(await wse)!.on(`${id}-${callId}`, returned)
     })
 }
+export {callNode}
 
 export default async function node<T>(nodeFunction: () => T): Promise<T> {
     return nodeFunction()
