@@ -35,6 +35,26 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
             }.bind(data));
         
 
+            wsEvents.on("__internal_full_client_server_import__fs-extra?=fs,", async function (this: typeof data, str: string) {
+                let [id, update] = deserialize(
+                    str, 
+                    "front", 
+                    wsEvents,
+                    this.cache
+                );
+                let caller = async () => await import("fs-extra")
+
+                const result = await caller();
+                update();
+                wsEvents.emit(`__internal_full_client_server_import__fs-extra?=fs,-${id}`, serialize(
+                    result, 
+                    "back", 
+                    wsEvents,
+                    this.cache
+                ));
+            }.bind(data));
+        
+
             wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-0", async function (this: typeof data, str: string) {
                 let [id, update] = deserialize(
                     str, 
@@ -43,8 +63,10 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
                     this.cache
                 );
                 const { say: say } = await import("/home/mav/full-client-server-sveltekit/src/routes/toBeImport");
+                const { default: fs } = await import("fs-extra");
                 let caller = () => {
 		say();
+		console.log(fs);
 		console.log("hello");
 	}
 

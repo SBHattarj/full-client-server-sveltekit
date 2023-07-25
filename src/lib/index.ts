@@ -275,6 +275,7 @@ export function serialize(
     const prevObject: any[] = []
     const prevTrueObject: any[] = []
     const value = JSON.stringify(obj, function (key, value)  {
+        if(prevTrueObject.includes(value)) return null
         if(this != null) {
             let objectindex = prevObject.indexOf(this)
             prevObject.splice(objectindex + 1)

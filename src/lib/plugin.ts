@@ -285,12 +285,14 @@ ${exportsDeclarations}
                         name: string,
                         propertyName: string
                     }[] = []
-                    for(let namedImport of ast.importClause?.namedBindings?.getChildren() ?? []) {
-                        if(ts.isImportSpecifier(namedImport)) {
-                            let propertyName = namedImport.propertyName?.getText() ?? namedImport.name.getText()
-                            let name = namedImport.name.getText()
-                            namedImports.push({ propertyName, name })
-                        }
+                    if(
+                        "elements" in (ast.importClause?.namedBindings ?? {})
+                    ) for(let namedImport of (ast.importClause?.namedBindings as any)?.elements ?? []) {
+                        if(!("propertyName" in namedImport)) continue
+                        if(!("name" in namedImport)) continue
+                        let name = (namedImport.name as any)?.getText()
+                        let propertyName = (namedImport.propertyName as any)?.getText() ?? name
+                        namedImports.push({ propertyName, name })
                     }
                     const trueImportString = ast.moduleSpecifier
                         .getText()
@@ -454,7 +456,6 @@ ${exportsDeclarations}
                             x => prevLocals.has(x) && !globalsConst.has(x) && !serverVars.has(x)
                         )
                     ) 
-                    console.log(shared, sharedServer, nonLocalsInner)
                     callNodeCalls.set(
                         `${file}-${id}`, 
                         {
@@ -591,7 +592,6 @@ ${exportsDeclarations}
                     )
                     if(saveNonLocals)
                         for(let nonLocal of transformASTResult.nonLocals) {
-                            console.log("non local", nonLocal)
                             nonLocals.add(nonLocal)
                         }
 
@@ -603,9 +603,7 @@ ${exportsDeclarations}
                     locals.add(ast.getText())
                 }
                 if(ts.isIdentifier(ast) && !isDeclaration && !prevLocals.has(ast.getText()) && saveNonLocals) {
-                    console.log(ast.getText())
                     nonLocals.add(ast.getText())
-                    console.log(nonLocals)
                 }
                 return {
                     locals,
