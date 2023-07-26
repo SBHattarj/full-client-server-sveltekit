@@ -231,7 +231,7 @@ ${exportsDeclarations}
             },
             async transform(code: string, id: string, options?: {ssr?: boolean}) {
                 const fileServerImportMap = new Map()
-                if(!code.includes("full-client-server-sveltekit")) return
+                if(!code.includes("full-client-server-sveltekit") && !code.includes("server:")) return
                 if(options?.ssr) {
                     const printer = ts.createPrinter()
                     const importsMap = new Map<string, string>()
