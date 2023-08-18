@@ -1,7 +1,7 @@
 <script lang="ts">
     import node from "full-client-server-sveltekit"
     import { say } from "server:/routes/toBeImport"
-    import fs from "server:npm:fs-extra"
+    import WebSocket from "server:npm:ws";
     
     class A {
         c() {
@@ -17,7 +17,7 @@
     const AInstance = new A(1)
     node(() => {
         say()
-        console.log(fs)
+        console.log(WebSocket)
         console.log("hello")
     })
     function fn() {

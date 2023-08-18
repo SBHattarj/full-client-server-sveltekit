@@ -1,31 +1,69 @@
-import ts,{type CallExpression, type FunctionDeclaration, type Identifier, type ImportDeclaration, type ArrowFunction, type PropertyAccessExpression} from "typescript";
+import ts from "typescript";
 
-export function isModuleDefaultImport(node: ts.Node): node is ImportDeclaration {
+/**
+* @typedef {import("typescript").CallExpression} CallExpression
+* @typedef {import("typescript").FunctionDeclaration} FunctionDeclaration
+* @typedef {import("typescript").ImportDeclaration} ImportDeclaration
+* @typedef {import("typescript").ArrowFunction} ArrowFunction
+* @typedef {import("typescript").PropertyAccessExpression} PropertyAccessExpression
+*/
+
+
+/**
+ * @param {ts.Node} node
+ * @return {node is ImportDeclaration}
+ */
+export function isModuleDefaultImport(node) {
     if(!ts.isImportDeclaration(node)) return false
-    return /['"]full-client-server-sveltekit["']/.test(node.moduleSpecifier!.getText()) && node.importClause?.name != null
+    return /['"]full-client-server-sveltekit["']/.test(node.moduleSpecifier.getText()) && node.importClause?.name != null
 }
 
-export function isServerImport(node: ts.Node): node is ImportDeclaration {
+/**
+ * @param {ts.Node} node
+ * @return {node is ImportDeclaration}
+ */
+export function isServerImport(node) {
     if(!ts.isImportDeclaration(node)) return false
     return node.moduleSpecifier.getText().startsWith("'server:") 
         || node.moduleSpecifier.getText().startsWith('"server:')
 }
-export function isServerNPMImport(node: ts.Node): node is ImportDeclaration {
+
+/**
+ * @param {ts.Node} node
+ * @return {node is ImportDeclaration}
+ */
+export function isServerNPMImport(node) {
     if(!ts.isImportDeclaration(node)) return false
     return node.moduleSpecifier.getText().startsWith("'server:npm:")
         || node.moduleSpecifier.getText().startsWith('"server:npm:')
 
 }
 
-export function isIdenntifierCallExpression(callExpression: ts.Node, identifier: string | undefined): callExpression is CallExpression {
+/**
+ * @param {ts.Node} callExpression
+ * @param {string | undefined} identifier
+ * @return {callExpression is CallExpression}
+ */
+export function isIdenntifierCallExpression(callExpression, identifier) {
     if(!ts.isCallExpression(callExpression) || !ts.isIdentifier(callExpression.expression)) return false
     return callExpression.expression.getText() === identifier
 }
-export function getPropertyExpressionParent(node: PropertyAccessExpression): ts.Expression {
+
+/**
+ * @param {PropertyAccessExpression} node
+ * @return {ts.Expression}
+ */
+export function getPropertyExpressionParent(node) {
     if(ts.isPropertyAccessExpression(node.expression)) return getPropertyExpressionParent(node.expression)
     return node.expression
 }
-export function callerInSet(callExpression: ts.Node, set: Set<string>): callExpression is CallExpression {
+
+/**
+ * @param {ts.Node} callExpression
+ * @param {Set<string>} set
+ * @return {callExpression is CallExpression}
+ */
+export function callerInSet(callExpression, set) {
     if(!ts.isCallExpression(callExpression)) return false
     if(ts.isPropertyAccessExpression(callExpression.expression)) {
         return set.has(getPropertyExpressionParent(callExpression.expression)?.getText() ?? "")
@@ -34,11 +72,20 @@ export function callerInSet(callExpression: ts.Node, set: Set<string>): callExpr
     return set.has(callExpression.expression.getText())
 }
 
-export function isFunctionNode(node: ts.Node): node is FunctionDeclaration | ArrowFunction {
+/**
+ * @param {ts.Node} node
+ * @return {node is FunctionDeclaration | ArrowFunction}
+ */
+export function isFunctionNode(node) {
     return ts.isFunctionDeclaration(node) || ts.isArrowFunction(node)
 }
 
-export function isNodeDeclaration(node: ts.Node, isDeclaration: boolean, isBindingName: boolean){
+/**
+ * @param {ts.Node} node
+ * @param {boolean} isDeclaration
+ * @param {boolean} isBindingName
+ */
+export function isNodeDeclaration(node, isDeclaration, isBindingName) {
     return (ts.isImportDeclaration(node) 
                         || ts.isVariableDeclaration(node)
                         || ts.isClassDeclaration(node)

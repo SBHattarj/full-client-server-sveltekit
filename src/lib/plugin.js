@@ -1,18 +1,27 @@
 import ts from "typescript";
 import { getTsconfig } from "get-tsconfig";
-import fse from "fs-extra"
 import path from "path"
-import fs from "fs-extra"
+import fs from "fs/promises"
 import { callerInSet, getPropertyExpressionParent, isFunctionNode, isIdenntifierCallExpression, isModuleDefaultImport, isNodeDeclaration, isServerImport, isServerNPMImport } from "./utils.js";
-import type { UserConfig } from "vite";
+/** @typedef {import("vite").UserConfig} UserConfig */
+
 const fullClientServerImport = "full-client-server-sveltekit"
 const globalsConst = new Set(["console"])
 
-const imports = `import type { WebSocketServer } from "ws";
-import WSEvents, { type WSEventHandler } from "ws-events";
+const imports = `import WSEvents from "${fullClientServerImport}/ws-events";
 import { serialize, deserialize } from "${fullClientServerImport}";
-`
-function createUpdateBlock(s: string) {
+/** @typedef {import("ws").WebSocketServer} WebSocketServer */
+
+
+/**
+* @param {(wse: import("full-client-server-sveltekit/ws-events").WSEventHandler) => any} cb
+* @return {(wse: WebSocketServer) => void}
+*/`
+
+/**
+ * @param {string} s
+ */
+function createUpdateBlock(s) {
     const varIdentifier = ts.factory.createIdentifier(s)
     const updateIdentifier = ts.factory.createIdentifier(`${s}Updated`)
     const updateAssignment = ts.factory.createAssignment(
@@ -42,21 +51,35 @@ function createUpdateBlock(s: string) {
     return tryBlock
 }
 
-function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, function: string, id: string, sharedServer?: Set<{name: string, propertyName: string, exporter: string}>}>, file = ts.createSourceFile("ws.ts", "", ts.ScriptTarget.Latest)) {
-    let wsCalls: Set<string> = new Set()
+/**
+ * @typedef {{
+        locals: Set<string>,
+        function: string,
+        id: string,
+        sharedServer?: Set<{name: string, propertyName: string, exporter: string}>
+    }} callNodeCallType
+ */
+/**
+ * @param {Map<string, callNodeCallType>} callNodeCalls
+ */
+function createServerImport(callNodeCalls) {
+    /** @type {Set<string>} */
+    let wsCalls = new Set()
     for(let [key, value] of callNodeCalls) {
         let idString = "id"
         let updateString = "update"
         let callerString = "caller"
         let sharedServer = value.sharedServer ?? new Set()
-        let imports = new Map<string, {name: string, propertyName: string}[]>()
-        let importedVars = new Set<string>()
+        /** @type {Map<string, {name: string, propertyName: string}[]>} */
+        let imports = new Map()
+        /** @type {Set<string>} */
+        let importedVars = new Set()
         for(let {name, propertyName, exporter} of sharedServer) {
             importedVars.add(name)
             if(imports.get(exporter) == null) {
                 imports.set(exporter, [])
             }
-            imports.get(exporter)!.push({
+            imports.get(exporter)?.push({
                 name,
                 propertyName
             })
@@ -77,7 +100,10 @@ function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, fun
             callerString = `${callerString}1`
         }
         wsCalls.add(`
-            wsEvents.on("${key}", async function (this: typeof data, str: string) {
+            wsEvents.on("${key}", /** 
+            * @this CacheType
+            * @param {string} str
+            */ async function (str) {
                 let [${[idString, ...value.locals,  updateString].join(", ")}] = deserialize(
                     str, 
                     "front", 
@@ -87,14 +113,17 @@ function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, fun
                 let ${callerString} = ${
                     value.function.replace(
                         /import\((["'`])(\.\.?)/g, 
-                        (_: string, quote: string, prefix: string) => {
+                        (_, quote, prefix) => {
                             const newPrefix = path.resolve(
                                 value.id.replace(/\/[^\/]*$/, ""),
                                 prefix
                             )
                             return `import(${quote}${newPrefix}`
                         }
-                    )                
+                    ).split("\n").map(
+                    (line, index) => index == 0 ? line : 
+`               ${line}`
+                    ).join("\n")
                 }
 
                 const result = await caller();
@@ -115,43 +144,45 @@ function createServerImport(callNodeCalls: Map<string, {locals: Set<string>, fun
     `
     const returnHandlerFunction = `function handleWse(wse) {
         wse.on("connection", ws => {
+            /** @typedef {Record<string, Record<string, any>>} CacheType */
+            /** @type {CacheType} */
             let data = {
                 cache: {}
             }
             ws.onclose = function () {
-                delete (data as any).cache
+                delete data.cache
             }
             ${wssConnectionBlock}
         })
     }
     `
-    const defaultExportStatement = `
-export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSocketServer) => void {
+    const defaultExportStatement = `export default function handleWs(cb) {
     return ${returnHandlerFunction}
 };
-    `
+`
     
     return `${imports}\n${defaultExportStatement}`
 }
 
 
 export function serverBrowserSync() {
-    const callNodeCalls: Map<string, {locals: Set<string>, function: string, id: string, sharedServer?: Set<{
-        name: string,
-        propertyName: string,
-        exporter: string
-    }>}> = new Map();
-    const serverImportMap = new Map<string, {
-        defaultImport?: string, 
+    /** @type {Map<string, callNodeCallType>}*/
+    const callNodeCalls = new Map();
+    /**
+     * @type {Map<string, {
+        defaultImport?: string,
         namedImports: {
             name: string,
             propertyName: string
         }[]
-    }>();
+        
+      }>}
+     */
+    const serverImportMap = new Map();
     return [
         {
             name: 'transform-svelte-tsconfig',
-            enforce: "pre" as const,
+            enforce: "pre",
             async configResolved() {
                 let svelteTSConfig = getTsconfig(path.resolve(process.cwd(), ".svelte-kit"))
                 if(svelteTSConfig != null) {
@@ -162,33 +193,44 @@ export function serverBrowserSync() {
                             "../node_modules/*",
                             "../node_modules/@types/*"
                         ]
+                        delete svelteTSConfig.config.compilerOptions.paths["server:npm:*/*"]
                         if(svelteTSConfig?.config == null) return
-                        await fse.writeJson(
-                            path.resolve(process.cwd(), ".svelte-kit", "tsconfig.json"), 
-                            svelteTSConfig.config,
-                            {spaces: 4}
-                        )
+                        setTimeout(async () => {
+                            await fs.writeFile(
+                                path.resolve(process.cwd(), ".svelte-kit", "tsconfig.json"),
+                                JSON.stringify(
+                                    svelteTSConfig?.config,
+                                    undefined,
+                                    4
+                                ),
+                            )
+                        }, 300)
                     }
                 }
             },
         },
         {
             name: 'transform-client-server-node',
-            async config(config: UserConfig, {command}: {command: string}) {
+            /**
+             * @param {UserConfig} _
+             * @param {Object} options
+             * @param {string} options.command
+             */
+            async config(_, {command}) {
                 if(command === "build") return
                     
-                await fs.writeFile(path.resolve(process.cwd(), "src", "lib", "ws.ts"), `
-import type { WebSocketServer } from "ws";
-import WSEvents, { type WSEventHandler } from "ws-events";
-import { serialize, deserialize } from "${fullClientServerImport}";
-export default (function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSocketServer) => void {
+                await fs.writeFile(path.resolve(process.cwd(), "src", "lib", "ws.js"), `
+${imports}
+export default (function handleWs(cb) {
     return function handleWse(wss) {
         wss.on("connection", ws => {
+            /** @typedef {Record<string, Record<string, any>>} CacheType */
+            /** @type {CacheType} */
             const data = {
                 cache: {}
             }
             ws.onclose = function () {
-                delete (data as any).cache
+                delete data.cache
             }
             const wsEvents = WSEvents(ws);
             cb(wsEvents);
@@ -198,9 +240,14 @@ export default (function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSo
 `)
                 
             },
-            async resolveId(id: string, importer?: string, {ssr}: {ssr?: boolean} = {}) {
+            /**
+             * @param {string} id
+             * @param {string} _
+             * @param {Object} options
+             * @param {boolean} [options.ssr]
+             */
+            async resolveId(id, _, {ssr}) {
                 if(ssr && id.startsWith("server:npm:")) {
-                    const serverId = id.replace(/^server:npm\:/, "")
                     return
                 }
                 if(ssr && id.startsWith("server:")) {
@@ -209,9 +256,13 @@ export default (function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSo
                 }
                 if(serverImportMap.has(id)) return id
             },
-            load(id: string) {
+            /**
+             * @param {string} id
+             */
+            load(id) {
                 if(serverImportMap.has(id)) {
-                    const {defaultImport, namedImports} = serverImportMap.get(id)!
+                    /** @type {{defaultImport?: string, namedImports?: {name: string, propertyName: string}[]}} */
+                    const {defaultImport, namedImports = []} = serverImportMap.get(id) ?? {}
                     let allExportsName = "allExports"
                     for(let {propertyName} of namedImports) {
                         if(propertyName === allExportsName) allExportsName += "1"
@@ -227,12 +278,20 @@ ${exportsDeclarations}
 `
                 }
             },
-            async transform(code: string, id: string, options?: {ssr?: boolean}) {
+
+            /**
+             * @param {string} code
+             * @param {string} id
+             * @param {Object} options
+             * @param {boolean} [options.ssr]
+             */
+            async transform(code, id, options) {
                 const fileServerImportMap = new Map()
                 if(!code.includes("full-client-server-sveltekit") && !code.includes("server:")) return
                 if(options?.ssr) {
                     const printer = ts.createPrinter()
-                    const importsMap = new Map<string, string>()
+                    /** @type {Map<string, string>} */
+                    const importsMap = new Map()
                     let ast = ts.createSourceFile(
                         id,
                         code,
@@ -261,11 +320,26 @@ ${exportsDeclarations}
                     ts.ScriptTarget.Latest,
                     true
                 )
-                let nodeCallIdentifier: string | undefined
-                let serverVars = new Set<string>()
-                let serverVarsProperty = new Map<string, {propertyName: string, exporter: string}>()
+                /** @type {string | undefined} */
+                let nodeCallIdentifier
+                /** @type {Set<string>} */
+                let serverVars = new Set()
+                /** @type {Map<string, {propertyName: string, exporter: string}>} */
+                let serverVarsProperty = new Map()
                 const printer = ts.createPrinter()
                 let nextId = 0
+                
+                /**
+                 * @param {Object} options
+                 * @param {ts.Node} options.ast
+                 * @param {string} options.file
+                 * @param {boolean} [options.isDeclaration]
+                 * @param {boolean} [options.isBindingName]
+                 * @param {boolean} [options.top]
+                 * @param {Set<string>} [options.prevLocals]
+                 * @param {boolean} [options.saveNonLocals]
+                 * @param {boolean} [options.isServer]
+                 */
                 function codeTransformAST({
                     ast, 
                     isDeclaration = false, 
@@ -274,32 +348,26 @@ ${exportsDeclarations}
                     prevLocals = new Set(),
                     saveNonLocals = false,
                     isServer
-                }: {
-                    ast: ts.Node,
-                    file: string,
-                    isDeclaration?: boolean
-                    isBindingName?: boolean, 
-                    top?: boolean,
-                    prevLocals?: Set<string>,
-                    saveNonLocals?: boolean
-                    isServer: boolean
                 }) {
-                    const locals: Set<string> = new Set()
-                    const nonLocals: Set<string> = new Set()
+                    /** @type {Set<string>} */
+                    const locals = new Set()
+                    const nonLocals = new Set()
                     if(!isServer && isServerNPMImport(ast)) {
                         let defaultImport = ast.importClause?.name?.getText()
-                        let namedImports: {
-                            name: string,
-                            propertyName: string
-                        }[] = []
+                        let namedImports = []
                         if(
                             "elements" in (ast.importClause?.namedBindings ?? {})
-                        ) for(let namedImport of (ast.importClause?.namedBindings as any)?.elements ?? []) {
-                            if(!("propertyName" in namedImport)) continue
-                            if(!("name" in namedImport)) continue
-                            let name = (namedImport.name as any)?.getText()
-                            let propertyName = (namedImport.propertyName as any)?.getText() ?? name
-                            namedImports.push({ propertyName, name })
+                        ) {
+                            /** @type {any} */
+                            let {elements = []} = ast.importClause?.namedBindings ?? {}
+                            
+                            for(let namedImport of elements) {
+                                if(!("propertyName" in namedImport)) continue
+                                if(!("name" in namedImport)) continue
+                                let name = namedImport.name?.getText()
+                                let propertyName = namedImport.propertyName?.getText() ?? name
+                                namedImports.push({ propertyName, name })
+                            }
                         }
                         const trueImportString = ast.moduleSpecifier
                             .getText()
@@ -326,9 +394,12 @@ ${exportsDeclarations}
                             importStringNode,
                             undefined
                         )
+                        /** @type {any} */
                         let importNodeString = newImportNode.moduleSpecifier
-                        ;(importNodeString as any).parent = ast
-                        ;(ast as any).moduleSpecifier = importNodeString
+                        importNodeString.parent = ast
+                        /** @type {any} */
+                        let astTemp = ast
+                        astTemp.moduleSpecifier = importNodeString
                         if(serverImportMap.has(importString)) return {locals, nonLocals}
                         isChanged = true
                         fileServerImportMap.set(ast.getText(), ast.getText().replace(/from.*/, `from "${importString}"`))
@@ -347,19 +418,27 @@ ${exportsDeclarations}
                     }
                     if(!isServer && isServerImport(ast)) {
                         let defaultImport = ast.importClause?.name?.getText()
-                        let namedImports: {
+                        /**
+                         * @type {{
                             name: string,
                             propertyName: string
-                        }[] = []
+                         }[]}
+                         */
+                        let namedImports = []
                         if(
                             "elements" in (ast.importClause?.namedBindings ?? {})
-                        ) for(let namedImport of (ast.importClause?.namedBindings as any)?.elements ?? []) {
-                            if(!("propertyName" in namedImport)) continue
-                            if(!("name" in namedImport)) continue
-                            let name = (namedImport.name as any)?.getText()
-                            let propertyName = (namedImport.propertyName as any)?.getText() ?? name
-                            namedImports.push({ propertyName, name })
-                        }
+                        ) {
+                            /** @type {any} */
+                            let {elements = []} = ast.importClause?.namedBindings ?? {}
+                            
+                            for(let namedImport of elements) {
+                                if(!("propertyName" in namedImport)) continue
+                                if(!("name" in namedImport)) continue
+                                let name = namedImport.name?.getText()
+                                let propertyName = namedImport.propertyName?.getText() ?? name
+                                namedImports.push({ propertyName, name })
+                            }
+                        } 
                         const trueImportString = ast.moduleSpecifier
                             .getText()
                             .replace(/^["']server\:/, "")
@@ -396,9 +475,12 @@ ${exportsDeclarations}
                             importStringNode,
                             undefined
                         )
+                        /** @type {any} */
                         let importNodeString = newImportNode.moduleSpecifier
-                        ;(importNodeString as any).parent = ast
-                        ;(ast as any).moduleSpecifier = importNodeString
+                        importNodeString.parent = ast
+                        /** @type {any} */
+                        let astTemp = ast
+                        astTemp.moduleSpecifier = importNodeString
                         if(serverImportMap.has(importString)) return {locals, nonLocals}
                         isChanged = true
                         fileServerImportMap.set(ast.getText(), ast.getText().replace(/from.*/, `from "${importString}"`))
@@ -420,24 +502,28 @@ ${exportsDeclarations}
                     
                     if(!isServer && isModuleDefaultImport(ast)) {
                         nodeCallIdentifier = ast.importClause?.name?.getText()
-                        const libImportClause = ts.factory.updateImportClause(
-                            ast.importClause!,
-                            ast.importClause!.isTypeOnly,
-                            undefined,
-                            ts.factory.createNamedImports([
-                                ts.factory.createImportSpecifier(
-                                    false,
-                                    undefined,
-                                    ts.factory.createIdentifier("callNode")
-                                )
-                            ])
-                        )
-                        ;(ast as any).importClause = libImportClause
-                        const libModuleSpecifier = ts.factory.createStringLiteral("full-client-server-sveltekit")
-                        ;(ast as any).moduleSpecifier = libModuleSpecifier
-                        ;(ast.moduleSpecifier as any).parent = ast
-                        isChanged = true
-                        return {locals, nonLocals}
+                        if(ast.importClause != null) {
+                            const libImportClause = ts.factory.updateImportClause(
+                                ast.importClause,
+                                ast.importClause.isTypeOnly,
+                                undefined,
+                                ts.factory.createNamedImports([
+                                    ts.factory.createImportSpecifier(
+                                        false,
+                                        undefined,
+                                        ts.factory.createIdentifier("callNode")
+                                    )
+                                ])
+                            )
+                            /** @type {any} */
+                            let astTemp = ast
+                            astTemp.importClause = libImportClause
+                            const libModuleSpecifier = ts.factory.createStringLiteral("full-client-server-sveltekit")
+                            astTemp.moduleSpecifier = libModuleSpecifier
+                            astTemp.moduleSpecifier.parent = ast
+                            isChanged = true
+                            return {locals, nonLocals}
+                        }
                     }
                     if(!isServer && isIdenntifierCallExpression(ast, nodeCallIdentifier) && isFunctionNode(ast.arguments[0])) {
                         const id = `${nextId++}`
@@ -452,10 +538,15 @@ ${exportsDeclarations}
                                 serverVars
                             ).map(name => ({
                                 name, 
-                                propertyName: serverVarsProperty.get(name)!.propertyName,
-                                exporter: serverVarsProperty.get(name)!.exporter
+                                propertyName: serverVarsProperty.get(name)?.propertyName ?? "",
+                                exporter: serverVarsProperty.get(name)?.exporter ?? ""
                             })).filter(
-                                ({name}) => nonLocalsInner.has(name) && !prevLocals.has(name)
+                                (
+                                    {name, propertyName, exporter}
+                                ) => nonLocalsInner.has(name) 
+                                && !prevLocals.has(name)
+                                && propertyName != ""
+                                && exporter != ""
                             )
                         )
                         let shared = new Set(
@@ -473,13 +564,14 @@ ${exportsDeclarations}
                             }
                         )
                         const libCall = ts.factory.createIdentifier("callNode")
+                        /** @type {any} */
                         const callNodeCall = ts.factory.createCallExpression(
                             libCall,
                             undefined,
                             [
                                 ts.factory.createStringLiteral(`${file}-${id}`),
                                 ts.factory.createArrayLiteralExpression([
-                                    ...(shared ?? [] as string[])
+                                    ...(shared ?? [])
                                 ].map(s => ts.factory.createIdentifier(s))),
                                 ts.factory.createArrowFunction(
                                     undefined,
@@ -495,16 +587,17 @@ ${exportsDeclarations}
                                 )
                             ]
                         )
-                        ;(callNodeCall as any).parent = ast.parent
-                        ;(callNodeCall as any).pos = ast.pos
-                        ;(callNodeCall as any).end = ast.end
+                        callNodeCall.parent = ast.parent
+                        callNodeCall.pos = ast.pos
+                        callNodeCall.end = ast.end
                         Object.defineProperties(ast, Object.getOwnPropertyDescriptors(callNodeCall))
                         isChanged = true
                         return {locals, nonLocals}
                     }
                     if(!isServer && callerInSet(ast, serverVars)) {
                         const id = `${nextId++}`
-                        let nonLocalsInner = new Set<string>()
+                        /** @type {Set<string>} */
+                        let nonLocalsInner = new Set()
                         for(let arg of ast.arguments) {
                             codeTransformAST({
                                 ast: arg,
@@ -524,10 +617,15 @@ ${exportsDeclarations}
                                 serverVars
                             ).map(name => ({
                                 name, 
-                                propertyName: serverVarsProperty.get(name)!.propertyName,
-                                exporter: serverVarsProperty.get(name)!.exporter
+                                propertyName: serverVarsProperty.get(name)?.propertyName ?? "",
+                                exporter: serverVarsProperty.get(name)?.exporter ?? ""
                             })).filter(
-                                ({name}) => nonLocalsInner.has(name) && !prevLocals.has(name)
+                                (
+                                    {name, propertyName, exporter}
+                                ) => nonLocalsInner.has(name) 
+                                && !prevLocals.has(name)
+                                && propertyName != ""
+                                && exporter != ""
                             )
                         )
                         let shared = new Set(
@@ -545,13 +643,14 @@ ${exportsDeclarations}
                             }
                         )
                         const libCall = ts.factory.createIdentifier("callNode")
+                        /** @type {any} */
                         const callNodeCall = ts.factory.createCallExpression(
                             libCall,
                             undefined,
                             [
                                 ts.factory.createStringLiteral(`${file}-${id}`),
                                 ts.factory.createArrayLiteralExpression([
-                                    ...(shared ?? [] as string[])
+                                    ...(shared ?? [])
                                 ].map(s => ts.factory.createIdentifier(s))),
                                 ts.factory.createArrowFunction(
                                     undefined,
@@ -567,9 +666,9 @@ ${exportsDeclarations}
                                 )
                             ]
                         )
-                        ;(callNodeCall as any).parent = ast.parent
-                        ;(callNodeCall as any).pos = ast.pos
-                        ;(callNodeCall as any).end = ast.end
+                        callNodeCall.parent = ast.parent
+                        callNodeCall.pos = ast.pos
+                        callNodeCall.end = ast.end
                         Object.defineProperties(ast, Object.getOwnPropertyDescriptors(callNodeCall))
                         isChanged = true
                         return {locals, nonLocals}
@@ -621,8 +720,8 @@ ${exportsDeclarations}
                 
                 fileServerImportMap
                 if(isChanged) {
-                    const serverImport = createServerImport(callNodeCalls, ast)
-                    await fs.writeFile(path.resolve(process.cwd(), "src", "lib", "ws.ts"), serverImport)
+                    const serverImport = createServerImport(callNodeCalls)
+                    await fs.writeFile(path.resolve(process.cwd(), "src", "lib", "ws.js"), serverImport)
                     const newCode = printer.printNode(ts.EmitHint.Unspecified, ast, ast)
                     return newCode
                 }

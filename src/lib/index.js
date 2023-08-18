@@ -1,8 +1,11 @@
 // Reexport your entry 
 //@ts-nocheck: Element implicitly has an 'any' type error
 
-import WsEvents, { type WSEventHandler } from "ws-events"
+import WsEvents from "./ws-events"
 import { BROWSER } from "esm-env";
+/** @typedef {import("./ws-events").WSEventHandler} WSEventHandler */
+
+
 export const Delete = Symbol("Delete the current key")
 export const END_DEPTH = Symbol("Disallows the map to go deeper in the object")
 export const internal = Symbol("internal value")
@@ -11,13 +14,20 @@ export const From = Symbol("from side")
 
 //! share map to serialize and deserialize objects which cannot be serialized by JSON.stringify
 globalThis.shareMap = new Map()
+/**
+ * @type {Map<Function, {
+        serialize(obj: any): any,
+        deserialize(str: any): any
+  }>}
+ */
+let shareMap = globalThis.shareMap
 shareMap.set(
     Date,
     {
-        serialize(obj: Date) {
+        serialize(obj) {
             return obj.valueOf()
         },
-        deserialize(str: any) {
+        deserialize(str) {
             return new Date(parseInt(str))
         }
     }
@@ -25,10 +35,10 @@ shareMap.set(
 shareMap.set(
     BigInt,
     {
-        serialize(obj: BigInt) {
+        serialize(obj) {
             return obj.toString()
         },
-        deserialize(str: string) {
+        deserialize(str) {
             return BigInt(str)
         }
     }
@@ -36,10 +46,10 @@ shareMap.set(
 shareMap.set(
     Set,
     {
-        serialize(obj: Set<any>) {
+        serialize(obj) {
             return Array.from(obj)
         },
-        deserialize(str: any) {
+        deserialize(str) {
             return new Set(str)
         }
     }
@@ -47,31 +57,37 @@ shareMap.set(
 shareMap.set(
     Map,
     {
-        serialize(obj: Map<any, any>) {
+        serialize(obj) {
             return Array.from(obj)
         },
-        deserialize(str: any) {
+        deserialize(str) {
             return new Map(str)
         }
     }
 )
 
-export type Serializer = {serialize(obj: any): any, deserialize(str: any): any}
+/** @typedef {{serialize(obj: any): any, deserialize(str: any): any}} Serializer */
 
-export function addSerializerDeserializer(fn: Function, serializer: Serializer) {
+/**
+ * @description Adds a class to be shared in a different way than other objects
+ * @param {Function} fn - The class to be shared in a different way than other objects
+ * @param {Serializer} serializer = The serializer functions to use
+ */
+export function addSerializerDeserializer(fn, serializer) {
     globalThis.shareMap.set(fn, serializer)
 }
 
 /**
- * Returns an object containing all property descriptors of the given object
+ * @description Returns an object containing all property descriptors of the given object
  * and its prototype chain.
- * @param obj - The object to get property descriptors from.
+ * @param {object} obj - The object to get property descriptors from.
  * @returns An object containing all property descriptors of the given object
  *          and its prototype chain.
  */
-export function getAllPropertyDescriptor(obj: object) {
+export function getAllPropertyDescriptor(obj) {
     let current = obj
-    let descriptor = {} as {[key: string | number | symbol]: PropertyDescriptor}
+    /** @type {Record<string | number | symbol, PropertyDescriptor>} */
+    let descriptor = {}
 
     if(current == null) return descriptor
 
@@ -85,20 +101,34 @@ export function getAllPropertyDescriptor(obj: object) {
         descriptor = {...Object.getOwnPropertyDescriptors(current), ...descriptor}
         current = Object.getPrototypeOf(current)
     }
-    delete (descriptor as any).constructor
+    /** @type {any} */
+    let descriptorTemp = descriptor
+    delete descriptorTemp.constructor
     // Return the merged property descriptors
     return descriptor
 }
 
+/** 
+ * @typedef {(
+        value: any,
+        path: (string | number | symbol)[],
+        current: object,
+        object: object
+    ) => typeof Delete 
+        | [string | number | symbol, any] 
+        | [string | number | symbol, any, typeof END_DEPTH]
+    } ObjectMapFN
+ */
+
 /**
  * 
- * Maps over an object Recursively using mapfn creating a copy 
+ * @description Maps over an object Recursively using mapfn creating a copy 
  * and returning the new object
- * @param object - The object to map
- * @param mapFN - The function for modifying the object
+ * @param {any} object - The object to map
+ * @param {ObjectMapFN} mapFN - The function for modifying the object
  * @returns A new object with modified data
  */
-export function objectMap(object: any, mapFN: ((value: any, path: (string | number | symbol)[], current: object, object: object) => typeof Delete | [string | number | symbol, any] | [string | number | symbol, any, typeof END_DEPTH])) {
+export function objectMap(object, mapFN) {
     // if given object is an premitive type then can't map through it so return
     if(typeof object !== "object") return object
 
@@ -116,7 +146,8 @@ export function objectMap(object: any, mapFN: ((value: any, path: (string | numb
     // the path is the array of properties that lead to current property
     let path = [keysMap[currentLevel][currentIndex]]
     // the objects through which we get to current property
-    let prevObjects = [Object.defineProperties({}, getAllPropertyDescriptor(object))] as any[]
+    /** @type {any[]} */
+    let prevObjects = [Object.defineProperties({}, getAllPropertyDescriptor(object))]
 
     // indices of the keys in path
     let prevKeyIndices = [currentIndex]
@@ -125,14 +156,16 @@ export function objectMap(object: any, mapFN: ((value: any, path: (string | numb
     let current = prevObjects.at(-1)
 
     //the new object
-    let result: any = Array.isArray(object) ? [] : {}
+    /** @type {any} */
+    let result = Array.isArray(object) ? [] : {}
 
     // the objects that lead to the current property in result
-    let prevResults = [result] as any[]
+    /** @type {any[]} */
+    let prevResults = [result]
 
     // using loop to avoid stack overflow
     while(true) {
-        const mapFNResultNormal = mapFN(current[path.at(-1)!], [...path], current, object)
+        const mapFNResultNormal = mapFN(current[path.at(-1) ?? 0], [...path], current, object)
         
         //if Delete symbol sent back then continuing meaning the key is deleted
         //from the object
@@ -211,7 +244,7 @@ export function objectMap(object: any, mapFN: ((value: any, path: (string | numb
             prevResults.pop()
             
             //getting last used index
-            currentIndex = prevKeyIndices.pop()!
+            currentIndex = prevKeyIndices.pop() ?? 0
             //remove last key
             keysMap.pop()
             //remove last key from path
@@ -228,7 +261,7 @@ export function objectMap(object: any, mapFN: ((value: any, path: (string | numb
                 path.pop()
                 prevObjects.pop()
                 prevResults.pop()
-                currentIndex = prevKeyIndices.pop()!
+                currentIndex = prevKeyIndices.pop() ?? 0
             }
             currentIndex++
             path.push(keysMap[currentLevel][currentIndex])
@@ -248,32 +281,39 @@ function *getIDs() {
 }
 const ids = getIDs()
 const callIds = getIDs()
-const cache: {[key: number]: any} = {}
+/** @type {Record<number, any>} */
+const cache = {}
 
 /**
  * Serializes a JavaScript object into a JSON string, with support for native objects and functions.
- * @param obj - The object to serialize.
- * @param from - The direction of the serialization, either "front" or "back". Defaults to "front".
- * @param wse - The WSEventHandler used to serialize and deserialize functions.
+ * @param {any} obj - The object to serialize.
+ * @param {"front" | "back"} from - The direction of the serialization, either "front" or "back". Defaults to "front".
+ * @param {WSEventHandler} wse - The WSEventHandler used to serialize and deserialize functions.
  * @returns A JSON string representing the serialized object.
  */
 export function serialize(
-    obj: any, 
-    from: "front" | "back" = "front", 
-    wse: WSEventHandler, 
+    obj, 
+    from, 
+    wse, 
     cacheMain = cache
 ) {
     //where we going from
     const current = from === "back" ? "front" : "back"
     //meta object that holds meta info of the serialized object for deserealization
-    const meta: [
-        (string | number | symbol)[], 
+    /**
+     * @type {[
+        (string | number | symbol)[],
         {type: string, id?: number, from: "front" | "back"}
-        | {type: "class", id?: number, from: "front" | "back", classID: number}][] 
-        = []
-    const stringifyPath: string[] = []
-    const prevObject: any[] = []
-    const prevTrueObject: any[] = []
+        | {type: "class", id?: number, from: "front" | "back", classID: number}
+     ][]}
+     */
+    const meta = []
+    /** @type {string[]} */
+    const stringifyPath = []
+    /** @type {any[]} */
+    const prevObject = []
+    /** @type {any[]} */
+    const prevTrueObject = []
     const value = JSON.stringify(obj, function (key, value)  {
         if(prevTrueObject.includes(value)) return null
         if(this != null) {
@@ -296,7 +336,7 @@ export function serialize(
             return "native"
         }
         if(typeof value === "function") {
-            const id = value[internalID] ?? ids.next().value!
+            const id = value[internalID] ?? ids.next().value
             cacheMain[id] = value
             meta.push([[...stringifyPath], {type: "function", id, from}])
             stringifyPath.pop()
@@ -318,7 +358,7 @@ export function serialize(
         if((typeof value === "object" && value != null) || typeof value === "bigint") {
             const {serialize: classSerialize} = globalThis.shareMap.get(value.constructor) ?? {}
             if(typeof classSerialize === "function") {
-                const id = value[internalID] ?? ids.next().value!
+                const id = value[internalID] ?? ids.next().value
                 try {
                     if(typeof value !== "bigint") value[internalID] = id
                 } catch {}
@@ -347,7 +387,7 @@ export function serialize(
             prevTrueObject.push(value)
             getAllPropertyDescriptor(value)
             if(value.constructor !== Object && !Array.isArray(value)) {
-                const resultObject = {} as any
+                const resultObject = {}
                 const props = getAllPropertyDescriptor(value)
                 for(let [key, value] of Object.entries(props)) {
                     Object.defineProperty(resultObject, key, {
@@ -355,7 +395,7 @@ export function serialize(
                         enumerable: true,
                     })
                 }
-                let id = value[internalID] ?? ids.next().value!
+                let id = value[internalID] ?? ids.next().value
                 try {
                     value[internalID] = id
                 } catch {}
@@ -383,26 +423,36 @@ export function serialize(
     )
 }
 
+/**
+ * @param {string} str
+ * @param {"front" | "back"} from
+ * @param {WSEventHandler} wse
+ *
+ */
 export function deserialize(
-    str: string, 
-    from: "front" | "back" = "front", 
-    wse: WSEventHandler,
+    str, 
+    from, 
+    wse,
     cacheMain = cache
 ) {
     const current = from === "back" ? "front" : "back"
-    const {meta, value: valueStr} = JSON.parse(str) as {
+    /**
+     * @type {{
         meta: [
-            (string | number | symbol)[], 
-            {type: string, id?: number, from: "front" | "back"} 
-            | {type: "class", id?: number, from: "front" | "back", classID: number}][], 
+            (string | number | symbol)[],
+            {type: string, id?: number, from: "front" | "back", classID?: number}
+        ][],
         value: any
-    }
+     }}
+     */
+    const {meta, value: valueStr} = JSON.parse(str)
     const value = valueStr == null ? valueStr : JSON.parse(valueStr)
     if(meta.length === 1 && meta[0][0].length === 0) {
         if(meta[0][1].type === "bigint") return BigInt(value)
     }
-    return objectMap(value, (value, path, object) => {
-        const key: string | number | symbol = path.at(-1)!
+    return objectMap(value, (value, path) => {
+        /** @type {string | number | symbol} */
+        const key = path.at(-1) ?? ""
         const keyMeta = meta.find(
             ([metaPath]) => 
                 metaPath.length === path.length 
@@ -414,12 +464,18 @@ export function deserialize(
             }
         }
         if(keyMeta?.type === "function") {
-            const id = keyMeta.id!
-            const value = function (...args: any) {
+            const id = keyMeta.id
+            /**
+             * @param {...any} args
+             */
+            const value = function (...args) {
                 const callID = callIds.next().value
                 wse.emit(`${id}-${from}`, {id: callID, args: serialize(args, current, wse)})
                 return new Promise((resolve) => {
-                    function onReturn(returned: string) {
+                    /**
+                     * @param {string} returned
+                     */
+                    function onReturn(returned) {
                         wse.off(`${id}-${from}`, onReturn)
                         resolve(deserialize(returned, from, wse))
                     }
@@ -427,14 +483,16 @@ export function deserialize(
                 })
             }
             try {
-                ;(value as any)[internalID] = id
-                ;(value as any)[From] = from
+                /** @type {any} */
+                let valueTemp = value
+                valueTemp[internalID] = id
+                valueTemp[From] = from
             } catch {}
             return [key, value]
         }
         if(keyMeta?.type === "class") {
             const id = keyMeta.id
-            const classID = (keyMeta as {classID: number}).classID
+            const classID = keyMeta.classID ?? 0 
             const {deserialize: classDeserialize} = [...globalThis.shareMap][classID][1] ?? {}
             if(typeof classDeserialize === "function") {
                 const serializedValue = classDeserialize(value)
@@ -458,7 +516,10 @@ export function deserialize(
     })
 }
 
-let wse: Promise<WSEventHandler> | null
+/**
+ * @type {Promise<WSEventHandler> | null}
+ */
+let wse
 if(BROWSER) {
     let url = new URL(window.location.href)
     url.protocol = url.protocol.replace('http', 'ws');
@@ -474,23 +535,39 @@ if(BROWSER) {
     // wse = WsEvents(ws)
 }
 
-function callNode(id: string, share: any[], update: (...args: any[]) => any = () => {}) {
+/**
+ * @param {string} id
+ * @param {any[]} share
+ * @param {(...args: any[]) => any} update
+ */
+function callNode(id, share, update = () => {}) {
     if(wse == null) return
     return new Promise(async (resolve) => {
+        if(wse == null) return
         const callId = callIds.next().value
-        ;(await wse!).emit(id, serialize([callId, ...share, (...args: any[]) => {
+        ;(await wse).emit(id, serialize([callId, ...share, /** @type {(...args: any[]) => void} */ (...args) => {
             update(...args)
-        }], "front", await wse!))
-        async function returned(data: string) {
-            resolve(deserialize(data, "back", await wse!))
+        }], "front", await wse))
+        /**
+         * @param {string} data
+         */
+        async function returned(data) {
+            if(wse == null) return
+            resolve(deserialize(data, "back", await wse))
             ;(await wse)?.off(`${id}-${callId}`, returned)
         }
-        ;(await wse)!.on(`${id}-${callId}`, returned)
+        ;(await wse).on(`${id}-${callId}`, returned)
     })
 }
 export {callNode}
 
-export default async function node<T>(nodeFunction: () => T): Promise<T> {
+
+/**
+ * @template T
+ * @param {() => T} nodeFunction
+ * @return {Promise<T>}
+ */
+export default async function node(nodeFunction) {
     return nodeFunction()
 }
 
