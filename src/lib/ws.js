@@ -13,7 +13,9 @@ export default function handleWs(cb) {
             /** @typedef {Record<string, Record<string, any>>} CacheType */
             /** @type {CacheType} */
             let data = {
-                cache: {}
+                cache: {},
+                functionRef: new Map(),
+                functionMap: new Map()
             }
             ws.onclose = function () {
                 delete data.cache
@@ -29,7 +31,9 @@ export default function handleWs(cb) {
                     str, 
                     "front", 
                     wsEvents,
-                    this.cache
+                    this.cache,
+                    this.functionRef,
+                    this.functionMap
                 );
                 let caller = async () => await import("/home/mav/repos/full-client-server-sveltekit/src/routes/toBeImport")
 
@@ -39,7 +43,9 @@ export default function handleWs(cb) {
                     result, 
                     "back", 
                     wsEvents,
-                    this.cache
+                    this.cache,
+                    this.functionMap,
+                    this.functionRef
                 ));
             }.bind(data));
         
@@ -52,7 +58,9 @@ export default function handleWs(cb) {
                     str, 
                     "front", 
                     wsEvents,
-                    this.cache
+                    this.cache,
+                    this.functionRef,
+                    this.functionMap
                 );
                 let caller = async () => await import("ws")
 
@@ -62,7 +70,9 @@ export default function handleWs(cb) {
                     result, 
                     "back", 
                     wsEvents,
-                    this.cache
+                    this.cache,
+                    this.functionMap,
+                    this.functionRef
                 ));
             }.bind(data));
         
@@ -75,7 +85,9 @@ export default function handleWs(cb) {
                     str, 
                     "front", 
                     wsEvents,
-                    this.cache
+                    this.cache,
+                    this.functionRef,
+                    this.functionMap
                 );
                 const { say: say } = await import("/home/mav/repos/full-client-server-sveltekit/src/routes/toBeImport");
                 const { default: WebSocket } = await import("ws");
@@ -91,7 +103,9 @@ export default function handleWs(cb) {
                     result, 
                     "back", 
                     wsEvents,
-                    this.cache
+                    this.cache,
+                    this.functionMap,
+                    this.functionRef
                 ));
             }.bind(data));
         
@@ -104,7 +118,9 @@ export default function handleWs(cb) {
                     str, 
                     "front", 
                     wsEvents,
-                    this.cache
+                    this.cache,
+                    this.functionRef,
+                    this.functionMap
                 );
                 let caller = async () => {
                		(await import("/home/mav/repos/full-client-server-sveltekit/src/routes/toBeImport")).say();
@@ -127,7 +143,9 @@ export default function handleWs(cb) {
                     result, 
                     "back", 
                     wsEvents,
-                    this.cache
+                    this.cache,
+                    this.functionMap,
+                    this.functionRef
                 ));
             }.bind(data));
         
@@ -140,7 +158,9 @@ export default function handleWs(cb) {
                     str, 
                     "front", 
                     wsEvents,
-                    this.cache
+                    this.cache,
+                    this.functionRef,
+                    this.functionMap
                 );
                 let caller = () => {
                			$$invalidate(1, counter = counter + 1);
@@ -155,7 +175,9 @@ export default function handleWs(cb) {
                     result, 
                     "back", 
                     wsEvents,
-                    this.cache
+                    this.cache,
+                    this.functionMap,
+                    this.functionRef
                 ));
             }.bind(data));
         

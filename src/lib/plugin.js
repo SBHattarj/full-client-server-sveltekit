@@ -108,7 +108,9 @@ function createServerImport(callNodeCalls) {
                     str, 
                     "front", 
                     wsEvents,
-                    this.cache
+                    this.cache,
+                    this.functionRef,
+                    this.functionMap
                 );${importsString}
                 let ${callerString} = ${
                     value.function.replace(
@@ -132,7 +134,9 @@ function createServerImport(callNodeCalls) {
                     result, 
                     "back", 
                     wsEvents,
-                    this.cache
+                    this.cache,
+                    this.functionMap,
+                    this.functionRef
                 ));
             }.bind(data));
         `)
@@ -147,7 +151,9 @@ function createServerImport(callNodeCalls) {
             /** @typedef {Record<string, Record<string, any>>} CacheType */
             /** @type {CacheType} */
             let data = {
-                cache: {}
+                cache: {},
+                functionRef: new Map(),
+                functionMap: new Map()
             }
             ws.onclose = function () {
                 delete data.cache
@@ -228,7 +234,9 @@ export default (function handleWs(cb) {
             /** @typedef {Record<string, Record<string, any>>} CacheType */
             /** @type {CacheType} */
             const data = {
-                cache: {}
+                cache: {},
+                funcMap: new Map(),
+                funcRef: new Map()
             }
             ws.onclose = function () {
                 delete data.cache

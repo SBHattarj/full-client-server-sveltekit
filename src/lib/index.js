@@ -283,6 +283,12 @@ const ids = getIDs()
 const callIds = getIDs()
 /** @type {Record<number, any>} */
 const cache = {}
+const ref = new WeakMap()
+/** @type {Map<number, function>} */
+const funcIndicies = new Map()
+/** @type {Map<number, WeakRef<Function>>} */
+const funcRef = new Map()
+
 
 /**
  * Serializes a JavaScript object into a JSON string, with support for native objects and functions.
@@ -295,7 +301,9 @@ export function serialize(
     obj, 
     from, 
     wse, 
-    cacheMain = cache
+    cacheMain = cache,
+    functionIndicies = funcIndicies,
+    functionMap = funcRef
 ) {
     //where we going from
     const current = from === "back" ? "front" : "back"
@@ -331,35 +339,63 @@ export function serialize(
             stringifyPath.push(key)
         if(value?.[From] !== from && value?.[From] != null) {
             //Add it's detail to meta
-            meta.push([[...stringifyPath], {type: "native", from: value?.[From], id: value[internalID]}])
+            meta.push([[...stringifyPath], {type: "native", from: value?.[From], id: ref.get(value)}])
             stringifyPath.pop()
             return "native"
         }
         if(typeof value === "function") {
-            const id = value[internalID] ?? ids.next().value
+            if(functionIndicies.size < 1) {
+                wse.on("func-check", str => {
+                    const funcs = new Set([...JSON.parse(str), ...[...functionMap].map(([key, ref]) => [key, ref.deref()])
+                        .filter(([, value]) => value != null)
+                        .map(([key]) => key)])
+                    for (const [key, value] of functionIndicies) {
+                        if(!funcs.has(key)) {
+                            
+                            functionIndicies.delete(key)
+                            delete cacheMain[key]
+                        }
+                    }
+                    wse.off(`${id}-${from}`, value)
+                    for(let [key, ref] of functionMap) {
+                        if(ref.deref() != null) functionMap.delete(key)
+                    }
+                })
+            }
+            const id = ref.get(value) ?? ids.next().value
+            functionMap.set(id, new WeakRef(value))
             cacheMain[id] = value
             meta.push([[...stringifyPath], {type: "function", id, from}])
             stringifyPath.pop()
             try {
+                ref.set(value, id)
                 value[internalID] = id
             } catch {}
             let self = prevTrueObject.at(-1)
-            wse.on(`${id}-${from}`, async ({id, args}) => {
-                const deserializedArgs = deserialize(args, current, wse)
+            /**
+             * @param {Object} data
+             * @param {number} data.id
+             * @param {any} data.args
+             */
+            let cb = async ({id, args}) => {
+                const deserializedArgs = deserialize(args, current, wse, cacheMain, functionMap, functionIndicies)
                 if(self?.constructor === Object) {
                     wse.emit(`${id}-${from}`, serialize(await value(...deserializedArgs), from, wse))
                     return
                 }
                 wse.emit(`${id}-${from}`, serialize(await value.call(self, ...deserializedArgs), from, wse))
-            })
+            }
+            functionIndicies.set(id, cb)
+            wse.on(`${id}-${from}`, cb)
             return `id-${from}=${id}`
         }
         
         if((typeof value === "object" && value != null) || typeof value === "bigint") {
             const {serialize: classSerialize} = globalThis.shareMap.get(value.constructor) ?? {}
             if(typeof classSerialize === "function") {
-                const id = value[internalID] ?? ids.next().value
+                const id = ref.get(value) ?? ids.next().value
                 try {
+                    ref.set(value, id)
                     if(typeof value !== "bigint") value[internalID] = id
                 } catch {}
                 cacheMain[id] = value
@@ -395,8 +431,9 @@ export function serialize(
                         enumerable: true,
                     })
                 }
-                let id = value[internalID] ?? ids.next().value
+                let id = ref.get(value) ?? ids.next().value
                 try {
+                    ref.set(value, id)
                     value[internalID] = id
                 } catch {}
                 cacheMain[id] = value
@@ -423,17 +460,22 @@ export function serialize(
     )
 }
 
+
+
 /**
  * @param {string} str
  * @param {"front" | "back"} from
  * @param {WSEventHandler} wse
  *
  */
+
 export function deserialize(
     str, 
     from, 
     wse,
-    cacheMain = cache
+    cacheMain = cache,
+    functionRef = funcRef,
+    functionMap = funcIndicies
 ) {
     const current = from === "back" ? "front" : "back"
     /**
@@ -470,21 +512,29 @@ export function deserialize(
              */
             const value = function (...args) {
                 const callID = callIds.next().value
-                wse.emit(`${id}-${from}`, {id: callID, args: serialize(args, current, wse)})
+                wse.emit(`${id}-${from}`, {id: callID, args: serialize(args, current, wse, cacheMain, functionMap, functionRef)})
                 return new Promise((resolve) => {
                     /**
                      * @param {string} returned
                      */
                     function onReturn(returned) {
                         wse.off(`${id}-${from}`, onReturn)
-                        resolve(deserialize(returned, from, wse))
+                        resolve(deserialize(returned, from, wse, cacheMain, functionRef, functionMap))
                     }
                     wse.on(`${callID}-${from}`, onReturn)
+                    wse.emit("func-check", JSON.stringify([...functionRef].map(([key, ref]) => [key, ref.deref()])
+                        .filter(([, value]) => value != null)
+                        .map(([key]) => key)))
+                    for(let [key, ref] of funcRef) {
+                        if(ref.deref() == null) funcRef.delete(key)
+                    }
                 })
             }
             try {
                 /** @type {any} */
                 let valueTemp = value
+                ref.set(value, id)
+                functionRef.set(id ?? 0, new WeakRef(value))
                 valueTemp[internalID] = id
                 valueTemp[From] = from
             } catch {}
@@ -498,6 +548,7 @@ export function deserialize(
                 const serializedValue = classDeserialize(value)
                 if(typeof serializedValue !== "bigint") {
                     try {
+                        ref.set(value, id)
                         serializedValue[internalID] = id
                         serializedValue[From] = keyMeta.from
                     } catch {}
@@ -507,7 +558,7 @@ export function deserialize(
         }
         if(keyMeta?.id != null && value != null && value.from === from) {
             try {
-                
+                ref.set(value, keyMeta.id)
                 value[internalID] = keyMeta.id
                 value[From] = from
             } catch {}
@@ -565,10 +616,10 @@ export {callNode}
 /**
  * @template T
  * @param {() => T} nodeFunction
- * @return {Promise<T>}
+ * @return {Promise<Awaited<T>>}
  */
 export default async function node(nodeFunction) {
-    return nodeFunction()
+    return await nodeFunction()
 }
 
 export {wse}

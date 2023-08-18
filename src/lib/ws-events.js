@@ -46,7 +46,6 @@ if(BROWSER) {
          */
         constructor(ws) {
             this.internalEvents = new EventEmitter()
-            this.internalEvents.setMaxListeners(100000000)
             ws.addEventListener("message", wsEvent => {
                 try {
                     const {event, eventData} = JSON.parse(wsEvent.data.toString())
@@ -91,7 +90,6 @@ if(BROWSER) {
          */
         constructor(ws) {
             this.internalEvents = new EventEmitter()
-            this.internalEvents.setMaxListeners(100000000)
             ws.on("message", (data) => {
                 try {
                     const {event, eventData} = JSON.parse(data.toString())
