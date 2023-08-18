@@ -22,7 +22,7 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
                     wsEvents,
                     this.cache
                 );
-                let caller = async () => await import("/home/mav/full-client-server-sveltekit/src/routes/toBeImport")
+                let caller = async () => await import("/home/mav/repos/full-client-server-sveltekit/src/routes/toBeImport")
 
                 const result = await caller();
                 update();
@@ -55,14 +55,14 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
             }.bind(data));
         
 
-            wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-0", async function (this: typeof data, str: string) {
+            wsEvents.on("/home/mav/repos/full-client-server-sveltekit/src/routes/+page.svelte-0", async function (this: typeof data, str: string) {
                 let [id, update] = deserialize(
                     str, 
                     "front", 
                     wsEvents,
                     this.cache
                 );
-                const { say: say } = await import("/home/mav/full-client-server-sveltekit/src/routes/toBeImport");
+                const { say: say } = await import("/home/mav/repos/full-client-server-sveltekit/src/routes/toBeImport");
                 const { default: fs } = await import("fs-extra");
                 let caller = () => {
 		say();
@@ -72,7 +72,7 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
 
                 const result = await caller();
                 update();
-                wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-0-${id}`, serialize(
+                wsEvents.emit(`/home/mav/repos/full-client-server-sveltekit/src/routes/+page.svelte-0-${id}`, serialize(
                     result, 
                     "back", 
                     wsEvents,
@@ -81,7 +81,7 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
             }.bind(data));
         
 
-            wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-1", async function (this: typeof data, str: string) {
+            wsEvents.on("/home/mav/repos/full-client-server-sveltekit/src/routes/+page.svelte-1", async function (this: typeof data, str: string) {
                 let [id, hello, constant, $$invalidate, fn, AInstance, bigInt, update] = deserialize(
                     str, 
                     "front", 
@@ -89,7 +89,7 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
                     this.cache
                 );
                 let caller = async () => {
-		(await import("/home/mav/full-client-server-sveltekit/src/routes/toBeImport")).say();
+		(await import("/home/mav/repos/full-client-server-sveltekit/src/routes/toBeImport")).say();
 		console.log(hello);
 		console.log(constant);
 		$$invalidate(0, hello = "hello client");
@@ -105,7 +105,7 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
 
                 const result = await caller();
                 update(hello, constant, $$invalidate, fn, AInstance, bigInt);
-                wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-1-${id}`, serialize(
+                wsEvents.emit(`/home/mav/repos/full-client-server-sveltekit/src/routes/+page.svelte-1-${id}`, serialize(
                     result, 
                     "back", 
                     wsEvents,
@@ -114,7 +114,7 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
             }.bind(data));
         
 
-            wsEvents.on("/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-2", async function (this: typeof data, str: string) {
+            wsEvents.on("/home/mav/repos/full-client-server-sveltekit/src/routes/+page.svelte-2", async function (this: typeof data, str: string) {
                 let [id, $$invalidate, counter, a, update] = deserialize(
                     str, 
                     "front", 
@@ -130,7 +130,7 @@ export default function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSoc
 
                 const result = await caller();
                 update($$invalidate, counter, a);
-                wsEvents.emit(`/home/mav/full-client-server-sveltekit/src/routes/+page.svelte-2-${id}`, serialize(
+                wsEvents.emit(`/home/mav/repos/full-client-server-sveltekit/src/routes/+page.svelte-2-${id}`, serialize(
                     result, 
                     "back", 
                     wsEvents,

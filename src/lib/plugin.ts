@@ -151,7 +151,7 @@ export function serverBrowserSync() {
     return [
         {
             name: 'transform-svelte-tsconfig',
-            enforce: "post" as const,
+            enforce: "pre" as const,
             async configResolved() {
                 let svelteTSConfig = getTsconfig(path.resolve(process.cwd(), ".svelte-kit"))
                 if(svelteTSConfig != null) {
@@ -162,14 +162,12 @@ export function serverBrowserSync() {
                             "../node_modules/*",
                             "../node_modules/@types/*"
                         ]
-                        setTimeout(async () => {
-                            if(svelteTSConfig?.config == null) return
-                            await fse.writeJson(
-                                path.resolve(process.cwd(), ".svelte-kit", "tsconfig.json"), 
-                                svelteTSConfig.config,
-                                {spaces: 4}
-                            )
-                        }, 300)
+                        if(svelteTSConfig?.config == null) return
+                        await fse.writeJson(
+                            path.resolve(process.cwd(), ".svelte-kit", "tsconfig.json"), 
+                            svelteTSConfig.config,
+                            {spaces: 4}
+                        )
                     }
                 }
             },
