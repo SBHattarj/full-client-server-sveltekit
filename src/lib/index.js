@@ -385,6 +385,12 @@ export function serialize(
                 }
                 wse.emit(`${id}-${from}`, serialize(await value.call(self, ...deserializedArgs), from, wse))
             }
+        if(ref.get(value) != null && functionIndicies.has(id)) {
+            /** @type {any} */
+            let prevCB = functionIndicies.get(id)
+            wse.off(`${id}-${from}`, prevCB)
+        }
+
             functionIndicies.set(id, cb)
             wse.on(`${id}-${from}`, cb)
             return `id-${from}=${id}`

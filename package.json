@@ -1,6 +1,6 @@
 {
 	"name": "full-client-server-sveltekit",
-	"version": "0.2.3c",
+	"version": "0.2.3d",
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build && npm run package",
