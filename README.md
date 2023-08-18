@@ -11,8 +11,8 @@ This uses websocket to allow pretty much any data type to be shared to and from 
 First install it by
 `npm i full-client-server-sveltekit`
 
-then change your vite config preferably ts (it forcibly uses ts right now you'll see in a minute)
-```ts
+then change your vite config preferably ts
+```js
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import WebSockets from "@carlosv2/adapter-node-ws/plugin";
@@ -65,25 +65,7 @@ export const handleWs = handleWS((wsEvents) => {
 });
 ```
 
-also add a file `src/lib/ws.ts`
-
-and give the following content to that file
-
-```ts
-import type { WebSocketServer } from "ws";
-import WSEvents, { type WSEventHandler } from "ws-events";
-import { serialize, deserialize } from "full-client-server-sveltekit";
-export default (function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSocketServer) => void {
-    return function handleWse(wss) {
-        wss.on("connection", ws => {
-            const wsEvents = WSEvents(ws);
-            cb(wsEvents);
-        });
-    };
-});
-```
-
-This is required to allow the ws to get what function needs to run at which point you'll see this changes when you add the node calls to your browser code
+This library adds the ws.js file for you with jsdoc typing. And it is added in the lib folder.
 
 And to make a part run in the server from the browser you can try the given example
 
@@ -91,7 +73,24 @@ And to make a part run in the server from the browser you can try the given exam
 <!-- src/routes/+page.svelte -->
 <script lang="ts">
     import node from "full-client-server-sveltekit"
+    import { say } from "server:/routes/toBeImport"
+    import WebSocket from "server:npm:ws";
+    
+    class A {
+        c() {
+            console.log(this.b)
+        }
+        a() {
+            console.log("a", this.b)
+        }
+        constructor(public b: number) {
+            
+        }
+    }
+    const AInstance = new A(1)
     node(() => {
+        say()
+        console.log(WebSocket)
         console.log("hello")
     })
     function fn() {
@@ -100,11 +99,16 @@ And to make a part run in the server from the browser you can try the given exam
     }
     let hello = "hello server"
     let bigInt = 100n
+    const constant = "constant"
     $: setTimeout(() => console.log("update", bigInt), 10)
     let a = node(async () => {
+        (await import("./toBeImport")).say()
         console.log(hello)
+        console.log(constant)
         hello = "hello client"
         console.log(await fn())
+        console.log(AInstance.c())
+        console.log(AInstance.a())
         console.log("hello after fn")
         console.log(bigInt)
         bigInt = 12n
@@ -130,76 +134,204 @@ And to make a part run in the server from the browser you can try the given exam
         counter = counter + 1
         console.log(counter)
         console.warn("this works again")
-        return "h"
+        return {
+            a: Promise.resolve("hello"),
+        }
+    }).then(async (e) => {
+        console.log(await e.a)
     })
 }}>
     increment {counter}
 </button>
 ```
+Also you will have to add the toBeImport file in src/routes, that will run on the server only.
 
-here the node function is ssr directly calls the function in the node call
+here the node function in ssr directly calls the function in the node call
 on browser it transpiles to `nodeCall(id, [...dependencies], (...updats) => ...(dependencies = updates))` where id is the file name followed by -<some number> which is not 1, 2, 3 for some reason, but it goes like 80, 80 84, I don't understand what went wrong
 
-Also the ws.ts file should become something like
+Also the `server:/` import, imports from `src/` that is `server:/routes/toBeImport` becomes `/routes/toBeImport`. also `server:npm:` imports npm packages as server only. In the browser, the import is done through a virtual file, which imports the file through a node call. Also if you import a function and use it as a function, it will not call it as a value but call it similarly to nodeCall, so any in place value like a string or and options object won't be exposed to the browser. You still should'n do backend query outside of the node function.
 
-```ts
-import type { WebSocketServer } from "ws";
-import WSEvents, { type WSEventHandler } from "ws-events";
+Also the ws.js file should become something like
+
+```js
+import WSEvents from "full-client-server-sveltekit/ws-events";
 import { serialize, deserialize } from "full-client-server-sveltekit";
-export default (function handleWs(cb: (wse: WSEventHandler) => any): (wse: WebSocketServer) => void {
-    return function handleWse(wss) {
-        wss.on("connection", ws => {
+/** @typedef {import("ws").WebSocketServer} WebSocketServer */
+
+
+/**
+* @param {(wse: import("full-client-server-sveltekit/ws-events").WSEventHandler) => any} cb
+* @return {(wse: WebSocketServer) => void}
+*/
+export default function handleWs(cb) {
+    return function handleWse(wse) {
+        wse.on("connection", ws => {
+            /** @typedef {Record<string, Record<string, any>>} CacheType */
+            /** @type {CacheType} */
+            let data = {
+                cache: {}
+            }
+            ws.onclose = function () {
+                delete data.cache
+            }
+            
             const wsEvents = WSEvents(ws);
-            wsEvents.on("/path/to/repo/src/routes/+page.svelte-88", async function (str) {
-                let [id, update] = deserialize(str, "front", wsEvents);
-                let caller = () => {
-                    console.log("hello");
-                };
+            
+            wsEvents.on("__internal_full_client_server_import__/routes/toBeImport?=,say=say", /** 
+            * @this CacheType
+            * @param {string} str
+            */ async function (str) {
+                let [id, update] = deserialize(
+                    str, 
+                    "front", 
+                    wsEvents,
+                    this.cache
+                );
+                let caller = async () => await import("/home/mav/repos/full-client-server-sveltekit/src/routes/toBeImport")
+
                 const result = await caller();
                 update();
-                wsEvents.emit(`/path/to/repo/src/routes/+page.svelte-88-${id}`, serialize(result, "back", wsEvents));
-            });
-            wsEvents.on("/path/to/repo/src/routes/+page.svelte-89", async function (str) {
-                let [id, hello, $$invalidate, fn, bigInt, update] = deserialize(str, "front", wsEvents);
-                let caller = async () => {
-                    console.log(hello);
-                    $$invalidate(0, hello = "hello client");
-                    console.log(await fn());
-                    console.log("hello after fn");
-                    console.log(bigInt);
-                    $$invalidate(3, bigInt = 12n);
-                    console.log(bigInt);
-                    return "to client";
-                };
+                wsEvents.emit(`__internal_full_client_server_import__/routes/toBeImport?=,say=say-${id}`, serialize(
+                    result, 
+                    "back", 
+                    wsEvents,
+                    this.cache
+                ));
+            }.bind(data));
+        
+
+            wsEvents.on("__internal_full_client_server_import__ws?=WebSocket,", /** 
+            * @this CacheType
+            * @param {string} str
+            */ async function (str) {
+                let [id, update] = deserialize(
+                    str, 
+                    "front", 
+                    wsEvents,
+                    this.cache
+                );
+                let caller = async () => await import("ws")
+
                 const result = await caller();
-                update(hello, $$invalidate, fn, bigInt);
-                wsEvents.emit(`/path/to/repo/src/routes/+page.svelte-89-${id}`, serialize(result, "back", wsEvents));
-            });
-            wsEvents.on("/path/to/repo/src/routes/+page.svelte-93", async function (str) {
-                let [id, $$invalidate, counter, update] = deserialize(str, "front", wsEvents);
+                update();
+                wsEvents.emit(`__internal_full_client_server_import__ws?=WebSocket,-${id}`, serialize(
+                    result, 
+                    "back", 
+                    wsEvents,
+                    this.cache
+                ));
+            }.bind(data));
+        
+
+            wsEvents.on("/home/mav/repos/full-client-server-sveltekit/src/routes/+page.svelte-0", /** 
+            * @this CacheType
+            * @param {string} str
+            */ async function (str) {
+                let [id, update] = deserialize(
+                    str, 
+                    "front", 
+                    wsEvents,
+                    this.cache
+                );
+                const { say: say } = await import("/home/mav/repos/full-client-server-sveltekit/src/routes/toBeImport");
+                const { default: WebSocket } = await import("ws");
                 let caller = () => {
-                    $$invalidate(1, counter = counter + 1);
-                    console.log(counter);
-                    console.warn("this works again");
-                    return "h";
-                };
+               		say();
+               		console.log(WebSocket);
+               		console.log("hello");
+               	}
+
                 const result = await caller();
-                update($$invalidate, counter);
-                wsEvents.emit(`/path/to/repo/src/routes/+page.svelte-93-${id}`, serialize(result, "back", wsEvents));
-            });
+                update();
+                wsEvents.emit(`/home/mav/repos/full-client-server-sveltekit/src/routes/+page.svelte-0-${id}`, serialize(
+                    result, 
+                    "back", 
+                    wsEvents,
+                    this.cache
+                ));
+            }.bind(data));
+        
+
+            wsEvents.on("/home/mav/repos/full-client-server-sveltekit/src/routes/+page.svelte-1", /** 
+            * @this CacheType
+            * @param {string} str
+            */ async function (str) {
+                let [id, hello, constant, $$invalidate, fn, AInstance, bigInt, update] = deserialize(
+                    str, 
+                    "front", 
+                    wsEvents,
+                    this.cache
+                );
+                let caller = async () => {
+               		(await import("/home/mav/repos/full-client-server-sveltekit/src/routes/toBeImport")).say();
+               		console.log(hello);
+               		console.log(constant);
+               		$$invalidate(0, hello = "hello client");
+               		console.log(await fn());
+               		console.log(AInstance.c());
+               		console.log(AInstance.a());
+               		console.log("hello after fn");
+               		console.log(bigInt);
+               		$$invalidate(3, bigInt = 12n);
+               		console.log(bigInt);
+               		return "to client";
+               	}
+
+                const result = await caller();
+                update(hello, constant, $$invalidate, fn, AInstance, bigInt);
+                wsEvents.emit(`/home/mav/repos/full-client-server-sveltekit/src/routes/+page.svelte-1-${id}`, serialize(
+                    result, 
+                    "back", 
+                    wsEvents,
+                    this.cache
+                ));
+            }.bind(data));
+        
+
+            wsEvents.on("/home/mav/repos/full-client-server-sveltekit/src/routes/+page.svelte-2", /** 
+            * @this CacheType
+            * @param {string} str
+            */ async function (str) {
+                let [id, $$invalidate, counter, a, update] = deserialize(
+                    str, 
+                    "front", 
+                    wsEvents,
+                    this.cache
+                );
+                let caller = () => {
+               			$$invalidate(1, counter = counter + 1);
+               			console.log(counter);
+               			console.warn("this works again");
+               			return { a: Promise.resolve("hello") };
+               		}
+
+                const result = await caller();
+                update($$invalidate, counter, a);
+                wsEvents.emit(`/home/mav/repos/full-client-server-sveltekit/src/routes/+page.svelte-2-${id}`, serialize(
+                    result, 
+                    "back", 
+                    wsEvents,
+                    this.cache
+                ));
+            }.bind(data));
+        
             cb(wsEvents);
-        });
-    };
-});
+    
+        })
+    }
+    
+};
 ```
 
 Then it should work as if everything is done synchronously but the console logs in the node function will run in the server and will appear in your terminal
 
-Also you can import the [`wse`](https://www.npmjs.com/package/ws-events) to import the ws event instance which lets you emit events which can be handles on the handleWS hook
+Also you can import the wse to import the ws event instance which lets you emit events which can be handles on the handleWS hook
 
 Also it takes class instances as normal object normally.
 
-You can make it able to serialize classes by giving it a serializer by using another exported function it's signature is as follows `addSerializerDeserializer(class, {serialize(class instance): "JSON.stringifiable object", deserialize("JSON.stringifiable object"): "class instance"})` this should be added to hook folder that is imported on both server and browser or somewhere else where the code runs before any and all code.
+You can make it able to serialize classes by giving it a serializer by using another exported function it's signature is as follows `addSerializerDeserializer(class, {serialize(class instance): "JSON.stringifiable object", deserialize("JSON.stringifiable object"): "class instance"})` this should be added to hook folder that is imported on both server and browser or somewhere else where the code runs before any and all code. Note that this is currently experimental and may not work as expected.
+
+For a better example you may look into [this example](https://github.com/SBHattarj/full-client-server-sveltekit-example).
 
 there are other imports which are used internally and I won't explain here.
 
