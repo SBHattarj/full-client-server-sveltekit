@@ -182,7 +182,8 @@ export function serverBrowserSync() {
     return [
         {
             name: 'transform-svelte-tsconfig',
-            enforce: "pre",
+            /** @type {"pre"} */
+            enforce: /** @type {const} */"pre",
             async configResolved() {
                 let svelteTSConfig = getTsconfig(path.resolve(process.cwd(), ".svelte-kit"))
                 if(svelteTSConfig != null) {
@@ -242,7 +243,7 @@ export default (function handleWs(cb) {
             },
             /**
              * @param {string} id
-             * @param {string} _
+             * @param {string | undefined} _
              * @param {Object} options
              * @param {boolean} [options.ssr]
              */
@@ -282,7 +283,7 @@ ${exportsDeclarations}
             /**
              * @param {string} code
              * @param {string} id
-             * @param {Object} options
+             * @param {Object} [options]
              * @param {boolean} [options.ssr]
              */
             async transform(code, id, options) {
