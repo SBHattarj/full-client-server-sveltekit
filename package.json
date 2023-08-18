@@ -1,6 +1,6 @@
 {
 	"name": "full-client-server-sveltekit",
-	"version": "0.2.2c",
+	"version": "0.2.2e",
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build && npm run package",
@@ -22,7 +22,13 @@
 			"svelte": "./dist/plugin.js",
 			"import": "./dist/plugin.js",
 			"default": "./dist/plugin.js"
-		}
+		},
+        "./ws-events": {
+            "types": "./dist/ws-events.d.ts",
+            "svelte": "./dist/ws-events.js",
+            "import": "./dist/ws-events.js",
+            "default": "./dist/ws-events.js"
+        }
 	},
 	"typesVersions": {
 		">4.0": {

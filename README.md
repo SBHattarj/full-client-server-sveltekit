@@ -335,6 +335,8 @@ For a better example you may look into [this example](https://github.com/SBHatta
 
 there are other imports which are used internally and I won't explain here.
 
+Currently there is no options parameter unfortunatly, I'll implement that after version 1. Also I'm hoping to add a way define your own method of two way data sending, rather than using my defined way of doing the two way data sending, just to be a little more flexible, on the expense of added minute complexity.
+
 Use this on your own discretion don't blame me for any valnearabilities it introduces I made this in over all 60 (trough out a few months due to lack of time as a physics major in college, about 60% of the mvp of this repo was done on the last 2 days due to summer vecation) hours and also I'm newly 18 at 2023 so don't expect much from me.
 
 I hope you have fun with this.
