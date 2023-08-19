@@ -2,14 +2,19 @@
 //@ts-nocheck: Element implicitly has an 'any' type error
 
 import WsEvents from "./ws-events"
-import { BROWSER } from "esm-env";
 /** @typedef {import("./ws-events").WSEventHandler} WSEventHandler */
+/** @typedef {import("./ws-events").WebSocketLike} WebSocketLike */
+/** @typedef {{
+    cache?: Record<number, any>,
+    functionRef?: Map<number, function>,
+    functionMap?: Map<number, WeakRef<function>>,
+    weakRef?: WeakMap<any, any>
+ }} CacheData */
 
 
 export const Delete = Symbol("Delete the current key")
 export const END_DEPTH = Symbol("Disallows the map to go deeper in the object")
 export const internal = Symbol("internal value")
-export const internalID = Symbol("internal ID")
 export const From = Symbol("from side")
 
 //! share map to serialize and deserialize objects which cannot be serialized by JSON.stringify
@@ -283,7 +288,7 @@ const ids = getIDs()
 const callIds = getIDs()
 /** @type {Record<number, any>} */
 const cache = {}
-const ref = new WeakMap()
+const weakRefMain = new WeakMap()
 /** @type {Map<number, function>} */
 const funcIndicies = new Map()
 /** @type {Map<number, WeakRef<Function>>} */
@@ -303,7 +308,8 @@ export function serialize(
     wse, 
     cacheMain = cache,
     functionIndicies = funcIndicies,
-    functionMap = funcRef
+    functionMap = funcRef,
+    weakRef = weakRefMain
 ) {
     //where we going from
     const current = from === "back" ? "front" : "back"
@@ -339,38 +345,32 @@ export function serialize(
             stringifyPath.push(key)
         if(value?.[From] !== from && value?.[From] != null) {
             //Add it's detail to meta
-            meta.push([[...stringifyPath], {type: "native", from: value?.[From], id: ref.get(value)}])
+            meta.push([[...stringifyPath], {type: "native", from: value?.[From], id: weakRef.get(value)}])
             stringifyPath.pop()
             return "native"
         }
         if(typeof value === "function") {
             if(functionIndicies.size < 1) {
                 wse.on("func-check", str => {
-                    const funcs = new Set([...JSON.parse(str), ...[...functionMap].map(([key, ref]) => [key, ref.deref()])
-                        .filter(([, value]) => value != null)
-                        .map(([key]) => key)])
-                    for (const [key, value] of functionIndicies) {
-                        if(!funcs.has(key)) {
-                            
-                            functionIndicies.delete(key)
-                            delete cacheMain[key]
-                        }
-                    }
-                    wse.off(`${id}-${from}`, value)
                     for(let [key, ref] of functionMap) {
                         if(ref.deref() != null) functionMap.delete(key)
                     }
+                    
+                    const funcs = new Set([...JSON.parse(str), ...functionMap.keys()])
+                    for (const [key] of functionIndicies) {
+                        if(!funcs.has(key)) {
+                            functionIndicies.delete(key)
+                        }
+                    }
+                    wse.off(`${id}-${from}`, value)
                 })
             }
-            const id = ref.get(value) ?? ids.next().value
+            const id = weakRef.get(value) ?? ids.next().value
             functionMap.set(id, new WeakRef(value))
             cacheMain[id] = value
             meta.push([[...stringifyPath], {type: "function", id, from}])
             stringifyPath.pop()
-            try {
-                ref.set(value, id)
-                value[internalID] = id
-            } catch {}
+            weakRef.set(value, id)
             let self = prevTrueObject.at(-1)
             /**
              * @param {Object} data
@@ -378,14 +378,38 @@ export function serialize(
              * @param {any} data.args
              */
             let cb = async ({id, args}) => {
-                const deserializedArgs = deserialize(args, current, wse, cacheMain, functionMap, functionIndicies)
+                const deserializedArgs = deserialize(
+                    args,
+                    current,
+                    wse,
+                    cacheMain,
+                    functionMap,
+                    functionIndicies,
+                    weakRef
+                )
                 if(self?.constructor === Object) {
-                    wse.emit(`${id}-${from}`, serialize(await value(...deserializedArgs), from, wse))
+                    wse.emit(`${id}-${from}`, serialize(
+                        await value(...deserializedArgs),
+                        from,
+                        wse,
+                        cacheMain,
+                        functionIndicies,
+                        functionMap,
+                        weakRef
+                    ))
                     return
                 }
-                wse.emit(`${id}-${from}`, serialize(await value.call(self, ...deserializedArgs), from, wse))
+                wse.emit(`${id}-${from}`, serialize(
+                    await value.call(self, ...deserializedArgs), 
+                    from,
+                    wse,
+                    cacheMain,
+                    functionIndicies,
+                    functionMap,
+                    weakRef
+                ))
             }
-        if(ref.get(value) != null && functionIndicies.has(id)) {
+        if(weakRef.get(value) != null && functionIndicies.has(id)) {
             /** @type {any} */
             let prevCB = functionIndicies.get(id)
             wse.off(`${id}-${from}`, prevCB)
@@ -399,11 +423,8 @@ export function serialize(
         if((typeof value === "object" && value != null) || typeof value === "bigint") {
             const {serialize: classSerialize} = globalThis.shareMap.get(value.constructor) ?? {}
             if(typeof classSerialize === "function") {
-                const id = ref.get(value) ?? ids.next().value
-                try {
-                    ref.set(value, id)
-                    if(typeof value !== "bigint") value[internalID] = id
-                } catch {}
+                const id = weakRef.get(value) ?? ids.next().value
+                if(typeof value !== "bigint") weakRef.set(value, id)
                 cacheMain[id] = value
                 meta.push([[...stringifyPath], {
                     type: "class", 
@@ -424,7 +445,6 @@ export function serialize(
                     prevTrueObject.push(value)
                 }
                 return serializedValue
-
             }
             prevTrueObject.push(value)
             getAllPropertyDescriptor(value)
@@ -437,11 +457,8 @@ export function serialize(
                         enumerable: true,
                     })
                 }
-                let id = ref.get(value) ?? ids.next().value
-                try {
-                    ref.set(value, id)
-                    value[internalID] = id
-                } catch {}
+                let id = weakRef.get(value) ?? ids.next().value
+                weakRef.set(value, id)
                 cacheMain[id] = value
                 meta.push([[...stringifyPath], {id, type: "unknowClass", from}])
                 prevObject.push(resultObject)
@@ -481,7 +498,8 @@ export function deserialize(
     wse,
     cacheMain = cache,
     functionRef = funcRef,
-    functionMap = funcIndicies
+    functionMap = funcIndicies,
+    weakRef = weakRefMain
 ) {
     const current = from === "back" ? "front" : "back"
     /**
@@ -518,14 +536,30 @@ export function deserialize(
              */
             const value = function (...args) {
                 const callID = callIds.next().value
-                wse.emit(`${id}-${from}`, {id: callID, args: serialize(args, current, wse, cacheMain, functionMap, functionRef)})
+                wse.emit(`${id}-${from}`, {id: callID, args: serialize(
+                    args,
+                    current,
+                    wse,
+                    cacheMain,
+                    functionMap,
+                    functionRef,
+                    weakRef
+                )})
                 return new Promise((resolve) => {
                     /**
                      * @param {string} returned
                      */
                     function onReturn(returned) {
                         wse.off(`${id}-${from}`, onReturn)
-                        resolve(deserialize(returned, from, wse, cacheMain, functionRef, functionMap))
+                        resolve(deserialize(
+                            returned,
+                            from,
+                            wse,
+                            cacheMain,
+                            functionRef,
+                            functionMap,
+                            weakRef
+                        ))
                     }
                     wse.on(`${callID}-${from}`, onReturn)
                     wse.emit("func-check", JSON.stringify([...functionRef].map(([key, ref]) => [key, ref.deref()])
@@ -539,9 +573,8 @@ export function deserialize(
             try {
                 /** @type {any} */
                 let valueTemp = value
-                ref.set(value, id)
+                weakRef.set(value, id)
                 functionRef.set(id ?? 0, new WeakRef(value))
-                valueTemp[internalID] = id
                 valueTemp[From] = from
             } catch {}
             return [key, value]
@@ -554,8 +587,7 @@ export function deserialize(
                 const serializedValue = classDeserialize(value)
                 if(typeof serializedValue !== "bigint") {
                     try {
-                        ref.set(value, id)
-                        serializedValue[internalID] = id
+                        weakRef.set(value, id)
                         serializedValue[From] = keyMeta.from
                     } catch {}
                 }
@@ -564,8 +596,7 @@ export function deserialize(
         }
         if(keyMeta?.id != null && value != null && value.from === from) {
             try {
-                ref.set(value, keyMeta.id)
-                value[internalID] = keyMeta.id
+                weakRef.set(value, keyMeta.id)
                 value[From] = from
             } catch {}
         }
@@ -574,22 +605,59 @@ export function deserialize(
 }
 
 /**
+ * @param {unknown} ws
+ * @returns {asserts ws is WebSocketLike}
+ */
+export function ensureWSLike(ws) {
+    if(ws == null) throw TypeError("ws must be an object")
+    if(typeof ws !== "object") throw TypeError("ws must be an object")
+    if(!("send" in ws)) throw TypeError("ws must have a send method")
+    if(!("addEventListener" in ws)) throw TypeError("ws must have an addEventListener method")
+    if(typeof ws.addEventListener !== "function") throw TypeError("ws must have a send method")    
+    if(typeof ws.send !== "function") throw TypeError("ws must have an addEventListener method")    
+}
+
+/**
  * @type {Promise<WSEventHandler> | null}
  */
 let wse
-if(BROWSER) {
+if(typeof window !== "undefined") {
     let url = new URL(window.location.href)
     url.protocol = url.protocol.replace('http', 'ws');
     let ws = new WebSocket(url)
-    wse = new Promise(resolve => {
+    try {
+        
+        wse = import(/* @vite-ignore */`${
+            import.meta.env.__internal_full_client_server_cwd__
+        }/${
+            import.meta.env.__internal_full_client_server_import__
+        }`).then(({wsInit}) => wsInit()).then((ws) => {
+            ensureWSLike(ws)
+            return ws
+        }).then((ws) => {
+            return WsEvents(ws)
+        }).catch((err) => {
+            if(import.meta.env.MODE === "development") if(err instanceof TypeError) {
+                if(err.message.includes("is not a function")) 
+                    console.warn("wsInit function must be exported, using default WebSocket instead")
+                else 
+                    console.warn("wsInit must return a WebSocketLike Object, using default WebSocket instead")
+            } 
+            else
+                console.warn("browserWSConfig not provided using default WebSocket")
+            let url = new URL(window.location.href)
+            url.protocol = url.protocol.replace('http', 'ws');
+            let ws = new WebSocket(url)
+            let wse = new Promise(resolve => {
 
-        ws.onopen = function (wss) {
-            resolve(WsEvents(ws))
-        }
-    })
-    ws.onerror = function (err) {
+                ws.onopen = function () {
+                    resolve(WsEvents(ws))
+                }
+            })
+            return wse
+        })
+    } catch {
     }
-    // wse = WsEvents(ws)
 }
 
 /**

@@ -1,6 +1,6 @@
 {
 	"name": "full-client-server-sveltekit",
-	"version": "0.2.3d",
+	"version": "1.0.0-next-c",
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build && npm run package",
@@ -23,24 +23,28 @@
 			"import": "./dist/plugin.js",
 			"default": "./dist/plugin.js"
 		},
-        "./ws-events": {
-            "types": "./dist/ws-events.d.ts",
-            "svelte": "./dist/ws-events.js",
-            "import": "./dist/ws-events.js",
-            "default": "./dist/ws-events.js"
-        }
+		"./ws-events": {
+			"types": "./dist/ws-events.d.ts",
+			"svelte": "./dist/ws-events.js",
+			"import": "./dist/ws-events.js",
+			"default": "./dist/ws-events.js"
+		}
 	},
 	"typesVersions": {
 		">4.0": {
 			"plugin": [
 				"./dist/plugin.d.ts"
-			]
+			],
+            "ws-events": [
+                "./dist/ws-events.d.ts"
+            ]
 		}
 	},
 	"files": [
 		"dist"
 	],
 	"devDependencies": {
+		"@carlosv2/adapter-node-ws": "^0.1.4",
 		"@sveltejs/adapter-auto": "^2.0.0",
 		"@sveltejs/kit": "^1.22.6",
 		"@sveltejs/package": "^2.2.1",
@@ -52,16 +56,14 @@
 		"tslib": "^2.4.1",
 		"typescript": "^5.0.0",
 		"unplugin-ast": "^0.7.0",
-		"vite": "^4.4.9"
+		"vite": "^4.4.9",
+		"ws": "^8.13.0"
 	},
 	"svelte": "./dist/index.js",
 	"types": "./dist/index.d.ts",
 	"type": "module",
 	"dependencies": {
-		"@carlosv2/adapter-node-ws": "^0.1.4",
-		"esm-env": "^1.0.0",
-		"events": "^3.3.0",
-		"ws": "^8.13.0"
+		"events": "^3.3.0"
 	},
 	"keywords": [
 		"sveltekit",

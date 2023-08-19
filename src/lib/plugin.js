@@ -4,17 +4,22 @@ import path from "path"
 import fs from "fs/promises"
 import { callerInSet, getPropertyExpressionParent, isFunctionNode, isIdenntifierCallExpression, isModuleDefaultImport, isNodeDeclaration, isServerImport, isServerNPMImport } from "./utils.js";
 /** @typedef {import("vite").UserConfig} UserConfig */
+/** @typedef {import("./ws-events").WebSocketLike} WebSocketLike */
 
 const fullClientServerImport = "full-client-server-sveltekit"
 const globalsConst = new Set(["console"])
 
 const imports = `import WSEvents from "${fullClientServerImport}/ws-events";
 import { serialize, deserialize } from "${fullClientServerImport}";
-/** @typedef {import("ws").WebSocketServer} WebSocketServer */
+/** @typedef {import("${fullClientServerImport}").CacheData} CacheData */
+/** @typedef {import("${fullClientServerImport}/ws-events").WebSocketServerLike} WebSocketServer */
+/** @typedef {import("${fullClientServerImport}/ws-events").WebSocketLike} WebSocket */
 
 
 /**
-* @param {(wse: import("full-client-server-sveltekit/ws-events").WSEventHandler) => any} cb
+* @param {(wse: import("${fullClientServerImport}/ws-events").WSEventHandler) => any} cb
+* @param {(wss: WebSocketServer, ws: WebSocket) => boolean} [validator]
+* @param {(cache: CacheData, wss: WebSocketServer, ws: WebSocket) => void} [dispose]
 * @return {(wse: WebSocketServer) => void}
 */`
 
@@ -101,17 +106,23 @@ function createServerImport(callNodeCalls) {
         }
         wsCalls.add(`
             wsEvents.on("${key}", /** 
-            * @this CacheType
+            * @this CacheData
             * @param {string} str
             */ async function (str) {
+                if(this.cache == null) return
+                if(this.functionMap == null) return
+                if(this.functionRef == null) return
+                if(this.weakRef == null) return
                 let [${[idString, ...value.locals,  updateString].join(", ")}] = deserialize(
                     str, 
                     "front", 
                     wsEvents,
                     this.cache,
+                    this.functionMap,
                     this.functionRef,
-                    this.functionMap
+                    this.weakRef
                 );${importsString}
+                // @ts-ignore
                 let ${callerString} = ${
                     value.function.replace(
                         /import\((["'`])(\.\.?)/g, 
@@ -124,7 +135,8 @@ function createServerImport(callNodeCalls) {
                         }
                     ).split("\n").map(
                     (line, index) => index == 0 ? line : 
-`               ${line}`
+`// @ts-ignore
+                ${line}`
                     ).join("\n")
                 }
 
@@ -135,8 +147,9 @@ function createServerImport(callNodeCalls) {
                     "back", 
                     wsEvents,
                     this.cache,
+                    this.functionRef,
                     this.functionMap,
-                    this.functionRef
+                    this.weakRef
                 ));
             }.bind(data));
         `)
@@ -146,23 +159,31 @@ function createServerImport(callNodeCalls) {
             ${[...wsCalls].join("\n")}
             cb(wsEvents);
     `
-    const returnHandlerFunction = `function handleWse(wse) {
-        wse.on("connection", ws => {
-            /** @typedef {Record<string, Record<string, any>>} CacheType */
-            /** @type {CacheType} */
+    const returnHandlerFunction = `function handleWse(wss) {
+        wss.on("connection", ws => {
+            if(validator != null && !validator?.(wss, ws)) return
+            /** @type {CacheData} */
             let data = {
                 cache: {},
                 functionRef: new Map(),
-                functionMap: new Map()
+                functionMap: new Map(),
+                weakRef: new WeakMap()
             }
             ws.onclose = function () {
+                if(dispose != null) {
+                    dispose(data, wss, ws)
+                    return
+                }
                 delete data.cache
+                delete data.functionRef
+                delete data.functionMap
+                delete data.weakRef
             }
             ${wssConnectionBlock}
         })
     }
     `
-    const defaultExportStatement = `export default function handleWs(cb) {
+    const defaultExportStatement = `export default function handleWs(cb, validator, dispose) {
     return ${returnHandlerFunction}
 };
 `
@@ -170,8 +191,21 @@ function createServerImport(callNodeCalls) {
     return `${imports}\n${defaultExportStatement}`
 }
 
+const browserWSConfigNotFoundID =  "__internal_full_client_server_missing_config__"
 
-export function serverBrowserSync() {
+export function serverBrowserSync(
+    {
+        cwd = process.cwd(),
+        browserWSConfig = "src/browserWS.config",
+        wsOutput = "src/lib/ws",
+        configExtensions = [".js", ".ts"],
+        /**
+         * @type {boolean}
+         * @description Whether the module is being internally developed should only be true if using to build the module
+         */
+        __internal_is_dev_module__ = false
+    } = {}
+) {
     /** @type {Map<string, callNodeCallType>}*/
     const callNodeCalls = new Map();
     /**
@@ -224,22 +258,35 @@ export function serverBrowserSync() {
              * @param {string} options.command
              */
             async config(_, {command}) {
+                if(command === "build" && !__internal_is_dev_module__) return {
+                    define: {
+                        "import.meta.env.__internal_full_client_server_cwd__": `"${cwd}"`,
+                        "import.meta.env.__internal_full_client_server_import__": `"${browserWSConfig}"`
+                    }
+                }
                 if(command === "build") return
-                    
-                await fs.writeFile(path.resolve(process.cwd(), "src", "lib", "ws.js"), `
+                await fs.writeFile(path.resolve(cwd, `${wsOutput}.js`), `
 ${imports}
-export default (function handleWs(cb) {
+export default (function handleWs(cb, validator, dispose) {
     return function handleWse(wss) {
         wss.on("connection", ws => {
-            /** @typedef {Record<string, Record<string, any>>} CacheType */
-            /** @type {CacheType} */
+            if(validator != null && !validator?.(wss, ws)) return
+            /** @type {CacheData} */
             const data = {
                 cache: {},
                 funcMap: new Map(),
-                funcRef: new Map()
+                funcRef: new Map(),
+                weakRef: new WeakMap()
             }
             ws.onclose = function () {
+                if(dispose != null) {
+                    dispose(data, wss, ws)
+                    return
+                }
                 delete data.cache
+                delete data.funcMap
+                delete data.funcRef
+                delete data.weakRef
             }
             const wsEvents = WSEvents(ws);
             cb(wsEvents);
@@ -247,6 +294,12 @@ export default (function handleWs(cb) {
     };
 });
 `)
+                return {
+                    define: {
+                        "import.meta.env.__internal_full_client_server_cwd__": `"${cwd}"`,
+                        "import.meta.env.__internal_full_client_server_import__": `"${browserWSConfig}"`
+                    }
+                }
                 
             },
             /**
@@ -256,6 +309,18 @@ export default (function handleWs(cb) {
              * @param {boolean} [options.ssr]
              */
             async resolveId(id, _, {ssr}) {
+                let browserWSConfigPath = `${cwd}/${browserWSConfig}`
+                let possibleBrowserWSConfigFiles = configExtensions.map(ext => `${browserWSConfigPath}${ext}`)
+                if(id === browserWSConfigPath) {
+                    let files = await fs.readdir(browserWSConfigPath.replace(/\/[^\/]*$/, ""))
+                    
+                    let configFile = files.find(file => file in possibleBrowserWSConfigFiles)
+                    if(configFile == null) return browserWSConfigNotFoundID
+                    return configFile
+                }
+                /*if(![...files].includes(browserWSConfig.replace(/^.*\//g, ""))) {
+                    return browserWSConfigNotFoundID
+                }*/
                 if(ssr && id.startsWith("server:npm:")) {
                     return
                 }
@@ -269,6 +334,9 @@ export default (function handleWs(cb) {
              * @param {string} id
              */
             load(id) {
+                if(id === browserWSConfigNotFoundID) {
+                    return ""
+                }
                 if(serverImportMap.has(id)) {
                     /** @type {{defaultImport?: string, namedImports?: {name: string, propertyName: string}[]}} */
                     const {defaultImport, namedImports = []} = serverImportMap.get(id) ?? {}
@@ -730,7 +798,7 @@ ${exportsDeclarations}
                 fileServerImportMap
                 if(isChanged) {
                     const serverImport = createServerImport(callNodeCalls)
-                    await fs.writeFile(path.resolve(process.cwd(), "src", "lib", "ws.js"), serverImport)
+                    await fs.writeFile(path.resolve(cwd, `${wsOutput}.js`), serverImport)
                     const newCode = printer.printNode(ts.EmitHint.Unspecified, ast, ast)
                     return newCode
                 }

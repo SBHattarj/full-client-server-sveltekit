@@ -15,12 +15,14 @@ export default defineConfig({
 	plugins: [
 		sveltekit(), 
 		WebSockets(),
-		serverBrowserSync()
+		serverBrowserSync({
+            __internal_is_dev_module__: false
+        })
 	],
 	server: {
 		hmr: { port: 3000 }
     },
     build: {
         target: "esnext"
-    }
+    },
 });
