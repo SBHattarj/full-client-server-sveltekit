@@ -16,6 +16,7 @@ import { EventEmitter } from "events"
     ): void
     send(data: string): void
     onclose?: ((...arhs: any[]) => any) | null
+    onopen: ((...args: any[]) => any) | null
  }} WebSocketLike
  * @typedef {{
     on(event: "connection", callback: (ws: WebSocketLike) => void): WebSocketServerLike,
@@ -63,6 +64,8 @@ class WSEventInterface {
     off(event, callback) {
         this.internalEvents.off(event, callback)
         return this
+    }
+    onopen() {
     }
 }
 /** @type {typeof WSEventInterface} */

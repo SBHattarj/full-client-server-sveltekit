@@ -199,6 +199,7 @@ export function serverBrowserSync(
         browserWSConfig = "src/browserWS.config",
         wsOutput = "src/lib/ws",
         configExtensions = [".js", ".ts"],
+        connectionTimeout = 10 * 1000,
         /**
          * @type {boolean}
          * @description Whether the module is being internally developed should only be true if using to build the module
@@ -297,7 +298,8 @@ export default (function handleWs(cb, validator, dispose) {
                 return {
                     define: {
                         "import.meta.env.__internal_full_client_server_cwd__": `"${cwd}"`,
-                        "import.meta.env.__internal_full_client_server_import__": `"${browserWSConfig}"`
+                        "import.meta.env.__internal_full_client_server_import__": `"${browserWSConfig}"`,
+                        "globalThis.__internal_full_client_server_timeout__": connectionTimeout
                     }
                 }
                 

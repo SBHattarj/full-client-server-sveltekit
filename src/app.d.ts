@@ -7,7 +7,7 @@ declare global {
 		// interface PageData {}
 		// interface Platform {}
 	}
-
+    var __internal_full_client_server_timeout__: number
 	var shareMap: Map<function, {serialize(obj: any): any, deserialize(str: any): any}>
 }
 

@@ -622,11 +622,7 @@ export function ensureWSLike(ws) {
  */
 let wse
 if(typeof window !== "undefined") {
-    let url = new URL(window.location.href)
-    url.protocol = url.protocol.replace('http', 'ws');
-    let ws = new WebSocket(url)
     try {
-        
         wse = import(/* @vite-ignore */`${
             import.meta.env.__internal_full_client_server_cwd__
         }/${
@@ -634,8 +630,6 @@ if(typeof window !== "undefined") {
         }`).then(({wsInit}) => wsInit()).then((ws) => {
             ensureWSLike(ws)
             return ws
-        }).then((ws) => {
-            return WsEvents(ws)
         }).catch((err) => {
             if(import.meta.env.MODE === "development") if(err instanceof TypeError) {
                 if(err.message.includes("is not a function")) 
@@ -647,7 +641,8 @@ if(typeof window !== "undefined") {
                 console.warn("browserWSConfig not provided using default WebSocket")
             let url = new URL(window.location.href)
             url.protocol = url.protocol.replace('http', 'ws');
-            let ws = new WebSocket(url)
+            return new WebSocket(url)
+        }).then(ws => {
             let wse = new Promise(resolve => {
 
                 ws.onopen = function () {
@@ -665,9 +660,14 @@ if(typeof window !== "undefined") {
  * @param {any[]} share
  * @param {(...args: any[]) => any} update
  */
+
 function callNode(id, share, update = () => {}) {
     if(wse == null) return
-    return new Promise(async (resolve) => {
+    
+    return new Promise(async (resolve, reject) => {
+        let timeout = setTimeout(() => {
+            reject(new Error("timeout"))
+        }, globalThis.__internal_full_client_server_timeout__)
         if(wse == null) return
         const callId = callIds.next().value
         ;(await wse).emit(id, serialize([callId, ...share, /** @type {(...args: any[]) => void} */ (...args) => {
@@ -677,6 +677,7 @@ function callNode(id, share, update = () => {}) {
          * @param {string} data
          */
         async function returned(data) {
+            clearTimeout(timeout)
             if(wse == null) return
             resolve(deserialize(data, "back", await wse))
             ;(await wse)?.off(`${id}-${callId}`, returned)
