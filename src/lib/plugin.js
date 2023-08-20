@@ -196,6 +196,7 @@ const browserWSConfigNotFoundID =  "__internal_full_client_server_missing_config
 export function serverBrowserSync(
     {
         cwd = process.cwd(),
+
         browserWSConfig = "src/browserWS.config",
         wsOutput = "src/lib/ws",
         configExtensions = [".js", ".ts"],

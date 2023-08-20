@@ -11,16 +11,22 @@ This uses websocket to allow pretty much any data type to be shared to and from 
 First install it by
 `npm i full-client-server-sveltekit`
 
-then change your vite config preferably ts
+If you want to use the default ws implementation you may also install:
+
+`npm i @carlosv2/adapter-node-ws ws`
+
+then change your vite config
 ```js
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
+// add this line if using the default ws implementation
 import WebSockets from "@carlosv2/adapter-node-ws/plugin";
 import {serverBrowserSync} from "full-client-server-sveltekit/plugin";
 
 export default defineConfig({
 	plugins: [
 		sveltekit(), 
+        // add this if using the default ws implementation
 		WebSockets(),
 		serverBrowserSync(),
 	],
@@ -33,6 +39,7 @@ export default defineConfig({
 
 change your svelte config as follows
 ```js
+// if using the default ws implementation otherwise use whickever one your want
 import adapter from "@carlosv2/adapter-node-ws/adapter";
 import { vitePreprocess } from '@sveltejs/kit/vite';
 import path from "path"
@@ -55,15 +62,19 @@ export default config;
 
 ```
 
-add a hooks.server
-
-change it's content to the follows
-
+When using the default ws implementation you will also want the hooks.server.ts to look like as follows:
 ```js
 import handleWS from "$lib/ws"
 export const handleWs = handleWS((wsEvents) => {
 });
+
 ```
+You may also add the ws config.
+
+ws config can only export one thing that is a wsInit function (not defualt export) which should return a WebSocketLike object, to know about the WebSocketLike object read ahead, it would be documented later.
+
+Also in case you are not using the default implementation with ws you have to use the function handleWS function's return type on the WebSocketServer or WebSocketServerLike object.
+
 
 This library adds the ws.js file for you with jsdoc typing. And it is added in the lib folder.
 
@@ -327,7 +338,7 @@ Then it should work as if everything is done synchronously but the console logs 
 
 Also you can import the wse to import the ws event instance which lets you emit events which can be handles on the handleWS hook
 
-Also it takes class instances as normal object normally.
+Also it takes class instances as normal objecta normally.
 
 You can make it able to serialize classes by giving it a serializer by using another exported function it's signature is as follows `addSerializerDeserializer(class, {serialize(class instance): "JSON.stringifiable object", deserialize("JSON.stringifiable object"): "class instance"})` this should be added to hook folder that is imported on both server and browser or somewhere else where the code runs before any and all code. Note that this is currently experimental and may not work as expected.
 
@@ -335,8 +346,63 @@ For a better example you may look into [this example](https://github.com/SBHatta
 
 there are other imports which are used internally and I won't explain here.
 
-Currently there is no options parameter unfortunatly, I'll implement that after version 1. Also I'm hoping to add a way define your own method of two way data sending, rather than using my defined way of doing the two way data sending, just to be a little more flexible, on the expense of added minute complexity.
+# Exports
+## Main module (".")
 
-Use this on your own discretion don't blame me for any valnearabilities it introduces I made this in over all 60 (trough out a few months due to lack of time as a physics major in college, about 60% of the mvp of this repo was done on the last 2 days due to summer vecation) hours and also I'm newly 18 at 2023 so don't expect much from me.
+export | types | description
+-------|-------|-------------
+default | `function <T>(cb: T): Promise<Awaited<ReturnType<T>>>` | The node function makes certain parts of code only run on the server
 
+### Note
+The other exports are not to be used by the consumer
+
+## plugin module ("./plugin")
+
+export | types | description
+-------|-------|--------------
+default | `function (option: PluginOptions): Plugin)` | The plugin function
+
+### PluginOption
+
+property | types | description | default
+---------|-------|-------------|----------
+cwd | `string` | current working directory | `process.cwd()`
+wsOutput | `string` | the output file for the wsHandle function, relative to cwd, must not start with "/", "./" or "../" must not contain extension | `"src/lib/ws"`
+browserWSConfig | `string` | the location for the browserWSConfig file, simalar to wsOutput, relative to cwd, must not contain extenstion | `"src/browserWS.config"`
+configExtensions | `stirng[]` | the posible extensions for the config file | `[".js", ".ts"]`
+connectionTimeout | `number` | the number of miliseconds before throwing timeout error on the node functions | `10 * 1000`
+
+## ws-events module ("./ws-events")
+export | types | description
+-------|-------|-------------
+default | `function (ws: WebSocketLike): WSEvents` | The function initialize the WSEvents
+WSEvents | `class` | The class of the WSEvents
+WebSocketLike | `type` | An object that is similar to WebSocket object
+WebSocketServerLike | `type` | An object that is similar to WebSocketServer object from `"ws"`
+
+### WSEvents
+
+property | types | description
+---------|-------|-------------
+constructor | `function(ws: WebSocketLike)` | The constructor
+on | `function (event: string, cb: (data: any) => any): this` | function add a callback for event sent from the other side (server/browser)
+off | `function (event: string, cb: (data: any) => any): this` | function remove a callback
+emit | `function (event: string, data: any): this` | function emit an event to be sent to the other side
+
+### WebSocketLike
+
+property | types | description
+---------|-------|-------------
+addEventListener | `fucntion (event: stirng, cb: ({data: {toString(): string}}) => void): void` | function to add listener for events over web socket. The `"message"` event is used by WSEvents to handle the ws data sent from the other side and then emit proper events.
+send | `function (data: string): void` | function to send data over web socket
+onCloke | `function (...args: any[]): any | null` | Callback ran when the socket connection is closed
+onopen | `function (...args: any[]): any | null` | Callback ran when the socket connection is established
+
+### WebSocketServerLike
+
+property | types | description
+---------|-------|-------------
+on | `function (event: "connection", callback: (ws: WebSocketLike) => void): WebSocketServerLike` | function to add evnet from WebSocketServer, only`"connection"` event is apperantly triggered by this object
+
+This plugin now supports the ussage of other means of two way communication to be used other than ws, but it may not be the easiest to implement, thus the default implementation is provided, you are encouraged experiment and try to use other methods, for example you might find [this](https://github.com/SBHattarj/full-client-server-sveltekit-example/tree/rest) to be interesting 
 I hope you have fun with this.

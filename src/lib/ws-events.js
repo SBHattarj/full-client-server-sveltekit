@@ -69,11 +69,12 @@ class WSEventInterface {
     }
 }
 /** @type {typeof WSEventInterface} */
-let wsEvents = WSEventInterface
+let WSEvents = WSEventInterface
 
 /**
  * @param {WebSocketLike} ws
  */
 export default function WsEvents(ws) {
-    return new wsEvents(ws)
+    return new WSEvents(ws)
 }
+export { WSEvents }
