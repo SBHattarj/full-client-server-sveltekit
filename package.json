@@ -1,6 +1,6 @@
 {
 	"name": "full-client-server-sveltekit",
-	"version": "1.0.0-a",
+	"version": "1.0.1",
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build && npm run package",
@@ -35,9 +35,9 @@
 			"plugin": [
 				"./dist/plugin.d.ts"
 			],
-            "ws-events": [
-                "./dist/ws-events.d.ts"
-            ]
+			"ws-events": [
+				"./dist/ws-events.d.ts"
+			]
 		}
 	},
 	"files": [

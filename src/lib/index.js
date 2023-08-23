@@ -317,8 +317,8 @@ export function serialize(
     /**
      * @type {[
         (string | number | symbol)[],
-        {type: string, id?: number, from: "front" | "back"}
-        | {type: "class", id?: number, from: "front" | "back", classID: number}
+        {type: string, id?: number, from: "front" | "back", value?: any}
+        | {type: "class", id?: number, from: "front" | "back", classID: number, value?: any}
      ][]}
      */
     const meta = []
@@ -338,16 +338,17 @@ export function serialize(
         }
         if(key == '' || key == null) {
             if(typeof value === 'bigint') {
-                meta.push([[], {type: "bigint", from}])
-                return value.toString()
+                meta.push([[], {type: "bigint", from, value: value.toString()}])
+                return ""
             }
         } else
             stringifyPath.push(key)
         if(value?.[From] !== from && value?.[From] != null) {
             //Add it's detail to meta
             meta.push([[...stringifyPath], {type: "native", from: value?.[From], id: weakRef.get(value)}])
+            const path = stringifyPath.join(".")
             stringifyPath.pop()
-            return "native"
+            return path
         }
         if(typeof value === "function") {
             if(functionIndicies.size < 1) {
@@ -369,6 +370,7 @@ export function serialize(
             functionMap.set(id, new WeakRef(value))
             cacheMain[id] = value
             meta.push([[...stringifyPath], {type: "function", id, from}])
+            const path = stringifyPath.join(".")
             stringifyPath.pop()
             weakRef.set(value, id)
             let self = prevTrueObject.at(-1)
@@ -417,7 +419,7 @@ export function serialize(
 
             functionIndicies.set(id, cb)
             wse.on(`${id}-${from}`, cb)
-            return `id-${from}=${id}`
+            return path
         }
         
         if((typeof value === "object" && value != null) || typeof value === "bigint") {
@@ -426,6 +428,26 @@ export function serialize(
                 const id = weakRef.get(value) ?? ids.next().value
                 if(typeof value !== "bigint") weakRef.set(value, id)
                 cacheMain[id] = value
+                let serializedValue = classSerialize(value)
+                if(typeof serializedValue !== "object") {
+                    const path = stringifyPath.join(".")
+                    prevObject.push(serializedValue)
+                    prevTrueObject.push(value)
+                    meta.push([[...stringifyPath], {
+                        type: "class", 
+                        id, 
+                        from, 
+                        classID: [
+                            ...globalThis.shareMap
+                        ].findIndex(
+                            ([cl]) => cl === value.constructor
+                        ),
+                        value: serializedValue
+                    }])
+                    stringifyPath.pop()
+
+                    return path
+                }
                 meta.push([[...stringifyPath], {
                     type: "class", 
                     id, 
@@ -436,14 +458,6 @@ export function serialize(
                         ([cl]) => cl === value.constructor
                     )
                 }])
-                let serializedValue = classSerialize(value)
-                if(typeof serializedValue !== "object") {
-                    stringifyPath.pop()
-                }
-                if(typeof serializedValue !== "object") {
-                    prevObject.push(serializedValue)
-                    prevTrueObject.push(value)
-                }
                 return serializedValue
             }
             prevTrueObject.push(value)
@@ -465,11 +479,16 @@ export function serialize(
                 return resultObject
             }
             prevObject.push(value)
-            
+            if(Object.values(value).length === 0) {
+                meta.push([[...stringifyPath], {type: "emptyObjectOrArray", from, value}])
+                                return stringifyPath.join(".")
+            }
             return value
         }
-        stringifyPath.pop()
-        return value
+        meta.push([[...stringifyPath], {type: "primitive", from, value}])
+        const path = stringifyPath.join(".")
+                stringifyPath.pop()
+        return path
 
     }, 4)
     //Map over the object to allow it to be serialized by JSON
@@ -481,6 +500,17 @@ export function serialize(
         null,
         4
     )
+}
+
+class StringifyPathValue {
+    /**
+     * @param {string} path
+     * @param {any} value
+     */
+    constructor(path, value) {
+        this.path = path
+        this.value = value
+    }
 }
 
 
@@ -506,27 +536,43 @@ export function deserialize(
      * @type {{
         meta: [
             (string | number | symbol)[],
-            {type: string, id?: number, from: "front" | "back", classID?: number}
+            {type: string, id?: number, from: "front" | "back", classID?: number, value?: any}
         ][],
         value: any
      }}
      */
     const {meta, value: valueStr} = JSON.parse(str)
-    const value = valueStr == null ? valueStr : JSON.parse(valueStr)
     if(meta.length === 1 && meta[0][0].length === 0) {
-        if(meta[0][1].type === "bigint") return BigInt(value)
+        if(meta[0][1].type === "bigint") return BigInt(meta[0][1].value)
     }
-    return objectMap(value, (value, path) => {
-        /** @type {string | number | symbol} */
-        const key = path.at(-1) ?? ""
-        const keyMeta = meta.find(
-            ([metaPath]) => 
-                metaPath.length === path.length 
-                && metaPath.every((key, index) => key == path[index])
+    const result = valueStr == null ? valueStr : JSON.parse(valueStr, (key, rawValue) => {
+        /** @type {string[]} */
+        let path = []
+        /** @type {any} */
+        let valueMain = null
+        if(typeof rawValue === "object") {
+            let strPathValues = rawValue == null ? [] : Object.values(rawValue)
+            path = strPathValues[0]?.path.split(".") ?? []
+            path.pop()
+            valueMain = Array.isArray(rawValue) ? [] : {}
+            for(let strPathValue of strPathValues) {
+                valueMain[strPathValue.path.split(".").at(-1) ?? ""] = strPathValue.value
+            }
+        } else {
+            path = rawValue?.split(".") ?? []
+        }
+        if(key == null || key.length === 0) path = []
+                const keyMeta = meta.find(
+            ([metaPath]) =>
+                metaPath.length === path.length
+                && (
+                    metaPath.every((key, index) => key == path[index])
+                    || metaPath.length === 0
+                )
         )?.[1]
-        if(keyMeta?.from !== from) {
+                if(keyMeta?.from !== from) {
             if(keyMeta?.id != null) {
-                return [key, cacheMain[keyMeta.id]]
+                return new StringifyPathValue(path.join("."), cacheMain[keyMeta.id])
             }
         }
         if(keyMeta?.type === "function") {
@@ -577,31 +623,35 @@ export function deserialize(
                 functionRef.set(id ?? 0, new WeakRef(value))
                 valueTemp[From] = from
             } catch {}
-            return [key, value]
-        }
+            return new StringifyPathValue(path.join("."), value)
+        } 
         if(keyMeta?.type === "class") {
             const id = keyMeta.id
             const classID = keyMeta.classID ?? 0 
+            const value = keyMeta.value
             const {deserialize: classDeserialize} = [...globalThis.shareMap][classID][1] ?? {}
             if(typeof classDeserialize === "function") {
                 const serializedValue = classDeserialize(value)
                 if(typeof serializedValue !== "bigint") {
                     try {
-                        weakRef.set(value, id)
+                        weakRef.set(rawValue, id)
                         serializedValue[From] = keyMeta.from
                     } catch {}
                 }
-                return [key, serializedValue]
+                return new StringifyPathValue(path.join("."), serializedValue)
             }
         }
-        if(keyMeta?.id != null && value != null && value.from === from) {
+        let value = keyMeta?.value ?? valueMain
+        if(keyMeta?.id != null && (value != null || valueMain) && value.from === from) {
             try {
                 weakRef.set(value, keyMeta.id)
                 value[From] = from
             } catch {}
         }
-        return [key, value]
+        return new StringifyPathValue(path.join("."), value ?? valueMain)
+        
     })
+        return result.value
 }
 
 /**
@@ -623,11 +673,9 @@ export function ensureWSLike(ws) {
 let wse
 if(typeof window !== "undefined") {
     try {
-        wse = import(/* @vite-ignore */`${
-            import.meta.env.__internal_full_client_server_cwd__
-        }/${
-            import.meta.env.__internal_full_client_server_import__
-        }`).then(({wsInit}) => wsInit()).then((ws) => {
+        // @ts-ignore
+        wse = import(":__internal_full_client_server_browserWSConfig__")
+        .then(({wsInit}) => wsInit()).then((ws) => {
             ensureWSLike(ws)
             return ws
         }).catch((err) => {

@@ -1,5 +1,4 @@
 import ts from "typescript";
-import { getTsconfig } from "get-tsconfig";
 import path from "path"
 import fs from "fs/promises"
 import { callerInSet, getPropertyExpressionParent, isFunctionNode, isIdenntifierCallExpression, isModuleDefaultImport, isNodeDeclaration, isServerImport, isServerNPMImport } from "./utils.js";
@@ -48,7 +47,7 @@ function createUpdateBlock(s) {
         ]),
         ts.factory.createCatchClause(
             undefined,
-            ts.factory.createBlock([])
+           ts.factory.createBlock([])
         ),
         undefined
 
@@ -221,13 +220,19 @@ export function serverBrowserSync(
       }>}
      */
     const serverImportMap = new Map();
+    /** @type {Set<RegExp>} */
+    const unusedImportRegexie = new Set()
     return [
         {
             name: 'transform-svelte-tsconfig',
             /** @type {"pre"} */
             enforce: /** @type {const} */"pre",
             async configResolved() {
-                let svelteTSConfig = getTsconfig(path.resolve(process.cwd(), ".svelte-kit"))
+                let svelteTSConfigString = await fs.readFile(
+                    path.resolve(process.cwd(), ".svelte-kit", "tsconfig.json"),
+                    "utf-8"
+                )
+                let svelteTSConfig = ts.parseConfigFileTextToJson('', svelteTSConfigString)
                 if(svelteTSConfig != null) {
                     if(svelteTSConfig.config.compilerOptions?.paths != null) {
                         svelteTSConfig.config.compilerOptions.paths["server:"] = ["../src"]
@@ -263,10 +268,13 @@ export function serverBrowserSync(
                 if(command === "build" && !__internal_is_dev_module__) return {
                     define: {
                         "import.meta.env.__internal_full_client_server_cwd__": `"${cwd}"`,
-                        "import.meta.env.__internal_full_client_server_import__": `"${browserWSConfig}"`
+                        "import.meta.env.__internal_full_client_server_import__": `"${browserWSConfig}"`,
+                        "globalThis.__internal_full_client_server_timeout__": connectionTimeout
                     }
                 }
-                if(command === "build") return
+                if(command === "build") {
+                                        return
+                }
                 await fs.writeFile(path.resolve(cwd, `${wsOutput}.js`), `
 ${imports}
 export default (function handleWs(cb, validator, dispose) {
@@ -310,26 +318,27 @@ export default (function handleWs(cb, validator, dispose) {
              * @param {string | undefined} _
              * @param {Object} options
              * @param {boolean} [options.ssr]
+             * @this {{resolve(id: string): Promise<{id: string} | null>}}
              */
             async resolveId(id, _, {ssr}) {
                 let browserWSConfigPath = `${cwd}/${browserWSConfig}`
                 let possibleBrowserWSConfigFiles = configExtensions.map(ext => `${browserWSConfigPath}${ext}`)
-                if(id === browserWSConfigPath) {
-                    let files = await fs.readdir(browserWSConfigPath.replace(/\/[^\/]*$/, ""))
+                if(
+                    id === browserWSConfigPath 
+                    || id === ":__internal_full_client_server_browserWSConfig__"
+                ) {
+                                        let files = await fs.readdir(browserWSConfigPath.replace(/\/[^\/]*$/, ""))
                     
-                    let configFile = files.find(file => file in possibleBrowserWSConfigFiles)
+                    let configFile = possibleBrowserWSConfigFiles.find(str => files.some(file => str.endsWith(file)))
                     if(configFile == null) return browserWSConfigNotFoundID
-                    return configFile
+                    return (await this.resolve(configFile))?.id
                 }
-                /*if(![...files].includes(browserWSConfig.replace(/^.*\//g, ""))) {
-                    return browserWSConfigNotFoundID
-                }*/
                 if(ssr && id.startsWith("server:npm:")) {
                     return
                 }
                 if(ssr && id.startsWith("server:")) {
                     const serverId = id.replace(/^server\:/, "")
-                    return path.resolve(process.cwd(), `./src${serverId}`)
+                    return (await this.resolve(path.resolve(process.cwd(), `./src${serverId}`)))?.id
                 }
                 if(serverImportMap.has(id)) return id
             },
@@ -408,6 +417,7 @@ ${exportsDeclarations}
                 let serverVarsProperty = new Map()
                 const printer = ts.createPrinter()
                 let nextId = 0
+                const unusedServerImportVars = new Set()
                 
                 /**
                  * @param {Object} options
@@ -419,6 +429,7 @@ ${exportsDeclarations}
                  * @param {Set<string>} [options.prevLocals]
                  * @param {boolean} [options.saveNonLocals]
                  * @param {boolean} [options.isServer]
+                 * @param {boolean} [options.isNode]
                  */
                 function codeTransformAST({
                     ast, 
@@ -427,13 +438,15 @@ ${exportsDeclarations}
                     file,
                     prevLocals = new Set(),
                     saveNonLocals = false,
-                    isServer
+                    isServer,
+                    isNode = false
                 }) {
                     /** @type {Set<string>} */
                     const locals = new Set()
                     const nonLocals = new Set()
                     if(!isServer && isServerNPMImport(ast)) {
                         let defaultImport = ast.importClause?.name?.getText()
+                        unusedServerImportVars.add(defaultImport)
                         let namedImports = []
                         if(
                             "elements" in (ast.importClause?.namedBindings ?? {})
@@ -446,6 +459,7 @@ ${exportsDeclarations}
                                 if(!("name" in namedImport)) continue
                                 let name = namedImport.name?.getText()
                                 let propertyName = namedImport.propertyName?.getText() ?? name
+                                unusedServerImportVars.add(name)
                                 namedImports.push({ propertyName, name })
                             }
                         }
@@ -480,7 +494,7 @@ ${exportsDeclarations}
                         /** @type {any} */
                         let astTemp = ast
                         astTemp.moduleSpecifier = importNodeString
-                        if(serverImportMap.has(importString)) return {locals, nonLocals}
+                        if(serverImportMap.has(importString)) return {locals, nonLocals, isNode}
                         isChanged = true
                         fileServerImportMap.set(ast.getText(), ast.getText().replace(/from.*/, `from "${importString}"`))
                         serverImportMap.set(importString, {
@@ -494,10 +508,11 @@ ${exportsDeclarations}
                             }")`,
                             id: file
                         })
-                        return {locals, nonLocals}
+                        return {locals, nonLocals, isNode}
                     }
                     if(!isServer && isServerImport(ast)) {
                         let defaultImport = ast.importClause?.name?.getText()
+                        unusedServerImportVars.add(defaultImport)
                         /**
                          * @type {{
                             name: string,
@@ -516,6 +531,7 @@ ${exportsDeclarations}
                                 if(!("name" in namedImport)) continue
                                 let name = namedImport.name?.getText()
                                 let propertyName = namedImport.propertyName?.getText() ?? name
+                                unusedServerImportVars.add(name)
                                 namedImports.push({ propertyName, name })
                             }
                         } 
@@ -561,7 +577,7 @@ ${exportsDeclarations}
                         /** @type {any} */
                         let astTemp = ast
                         astTemp.moduleSpecifier = importNodeString
-                        if(serverImportMap.has(importString)) return {locals, nonLocals}
+                        if(serverImportMap.has(importString)) return {locals, nonLocals, isNode}
                         isChanged = true
                         fileServerImportMap.set(ast.getText(), ast.getText().replace(/from.*/, `from "${importString}"`))
                         serverImportMap.set(importString, {
@@ -577,7 +593,7 @@ ${exportsDeclarations}
                             }")`,
                             id: file
                         })
-                        return {locals, nonLocals}
+                        return {locals, nonLocals, isNode}
                     }
                     
                     if(!isServer && isModuleDefaultImport(ast)) {
@@ -602,7 +618,7 @@ ${exportsDeclarations}
                             astTemp.moduleSpecifier = libModuleSpecifier
                             astTemp.moduleSpecifier.parent = ast
                             isChanged = true
-                            return {locals, nonLocals}
+                            return {locals, nonLocals, isNode}
                         }
                     }
                     if(!isServer && isIdenntifierCallExpression(ast, nodeCallIdentifier) && isFunctionNode(ast.arguments[0])) {
@@ -611,7 +627,8 @@ ${exportsDeclarations}
                             ast: ast.arguments[0],
                             file,
                             saveNonLocals: true,
-                            isServer: true
+                            isServer: true,
+                            isNode: true
                         })
                         let sharedServer = new Set(
                             Array.from(
@@ -672,7 +689,7 @@ ${exportsDeclarations}
                         callNodeCall.end = ast.end
                         Object.defineProperties(ast, Object.getOwnPropertyDescriptors(callNodeCall))
                         isChanged = true
-                        return {locals, nonLocals}
+                        return {locals, nonLocals, isNode}
                     }
                     if(!isServer && callerInSet(ast, serverVars)) {
                         const id = `${nextId++}`
@@ -683,14 +700,16 @@ ${exportsDeclarations}
                                 ast: arg,
                                 file,
                                 saveNonLocals: true,
-                                isServer: true
+                                isServer: true,
+                                isNode: true
                             }).nonLocals.forEach(name => nonLocalsInner.add(name))
                         }
                         codeTransformAST({
                             ast: ast.expression,
                             file,
                             saveNonLocals: true,
-                            isServer: true
+                            isServer: true,
+                            isNode: true
                         }).nonLocals.forEach(name => nonLocalsInner.add(name))
                         let sharedServer = new Set(
                             Array.from(
@@ -751,7 +770,7 @@ ${exportsDeclarations}
                         callNodeCall.end = ast.end
                         Object.defineProperties(ast, Object.getOwnPropertyDescriptors(callNodeCall))
                         isChanged = true
-                        return {locals, nonLocals}
+                        return {locals, nonLocals, isNode}
                     }
                     if(ts.isPropertyAccessExpression(ast)) {
                         return codeTransformAST({
@@ -761,7 +780,8 @@ ${exportsDeclarations}
                             file,
                             prevLocals,
                             saveNonLocals,
-                            isServer
+                            isServer,
+                            isNode
                         })
                     }
                     for(let node of ast.getChildren()) {
@@ -773,11 +793,16 @@ ${exportsDeclarations}
                             file,
                             prevLocals: new Set([...prevLocals, ...locals]),
                             saveNonLocals,
-                            isServer
+                            isServer,
+                            isNode
                         }
                         )
                         if(saveNonLocals)
+                            if(!isNode && !transformASTResult.isNode && transformASTResult.nonLocals.has("say")) {
+                                                            }
                             for(let nonLocal of transformASTResult.nonLocals) {
+                                if(!isNode && !transformASTResult.isNode && unusedServerImportVars.has(nonLocal)) 
+                                    unusedServerImportVars.delete(nonLocal)
                                 nonLocals.add(nonLocal)
                             }
 
@@ -793,7 +818,8 @@ ${exportsDeclarations}
                     }
                     return {
                         locals,
-                        nonLocals
+                        nonLocals,
+                        isNode
                     }
                 }
                 codeTransformAST({ast, file: id, isServer: false})
@@ -802,8 +828,31 @@ ${exportsDeclarations}
                 if(isChanged) {
                     const serverImport = createServerImport(callNodeCalls)
                     await fs.writeFile(path.resolve(cwd, `${wsOutput}.js`), serverImport)
-                    const newCode = printer.printNode(ts.EmitHint.Unspecified, ast, ast)
-                    return newCode
+                                        let newCode = printer.printNode(ts.EmitHint.Unspecified, ast, ast)
+                        for(let [importString, serverImport] of serverImportMap) {
+                            const importRegex = new RegExp(
+                                `.+from "${importString.replace("?", "\\?")}";\\n`
+                            )
+                            if(unusedServerImportVars.has(serverImport.defaultImport)) {
+                                if(serverImport.namedImports.length > 0) {
+                                    if(!serverImport.namedImports.every(({name}) => unusedServerImportVars.has(name)))
+                                        continue
+                                }
+                                newCode = newCode.replace(importRegex, "")
+                                serverImportMap.delete(importString)
+                                unusedImportRegexie.add(importRegex)
+                                continue
+                            }
+                                                        if(serverImport.defaultImport != null) continue
+                            if(!serverImport.namedImports.every(({name}) => unusedServerImportVars.has(name))) continue
+                            newCode = newCode.replace(importRegex, "")
+                            unusedImportRegexie.add(importRegex)
+                            serverImportMap.delete(importString)
+                        }
+                        for(let regex of unusedImportRegexie) {
+                            newCode = newCode.replace(regex, "")
+                        }
+                        return newCode
                 }
             }
         }

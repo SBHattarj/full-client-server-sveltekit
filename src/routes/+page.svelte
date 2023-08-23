@@ -44,7 +44,6 @@
     })
     console.log(a)
     let counter = 0
-    console.log(import.meta.env.cwd)
 </script>
 
 <h1>Welcome to your library project</h1>
