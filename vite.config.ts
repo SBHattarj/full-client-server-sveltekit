@@ -16,7 +16,8 @@ export default defineConfig({
 		sveltekit(), 
 		WebSockets(),
 		serverBrowserSync({
-            __internal_is_dev_module__: false
+            __internal_is_dev_module__: false,
+            wsOutput: "src/ws"
         })
 	],
 	server: {

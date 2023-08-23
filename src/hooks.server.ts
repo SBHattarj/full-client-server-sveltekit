@@ -1,3 +1,3 @@
-import handleWS from "$lib/ws"
+import handleWS from "./ws"
 export const handleWs = handleWS((wsEvents) => {
 });
